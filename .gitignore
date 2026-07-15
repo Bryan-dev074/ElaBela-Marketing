@@ -48,3 +48,6 @@ yarn-error.log*
 
 # local tooling (Claude Code skills, etc.)
 /.claude/
+
+# original logo source (only public/logo.png ships)
+/logo/

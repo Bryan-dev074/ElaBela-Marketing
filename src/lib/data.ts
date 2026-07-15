@@ -16,7 +16,7 @@ export interface DailyTask {
 
 /** Daily recurring tasks — from the "Tareas Diarias" group. */
 export const DAILY_TASKS: DailyTask[] = [
-  { id: "t1", name: "Crear portada de video", icon: "🎨", assignee: "cielo", state: "done" },
+  { id: "t1", name: "Crear portada de video", icon: "🎨", assignee: "bryan", state: "done" },
   { id: "t2", name: "Comunidad WhatsApp", icon: "👥", assignee: "elizabeth", state: "doing" },
   { id: "t3", name: "Crear video Avatar", icon: "🧑‍🎤", assignee: "cielo", state: "doing" },
   { id: "t4", name: "Crear Imágenes en Pedestal", icon: "🖼️", assignee: "elizabeth", state: "todo" },
@@ -24,11 +24,11 @@ export const DAILY_TASKS: DailyTask[] = [
   { id: "t6", name: "Subir Post IG", icon: "📤", assignee: "elizabeth", state: "todo" },
   { id: "t7", name: "Crear Tutorial / Carrusel", icon: "📚", assignee: "cielo", state: "todo" },
   { id: "t8", name: "Subir Post TikTok", icon: "📤", assignee: "elizabeth", state: "todo" },
-  { id: "t9", name: "Chats - Redes", icon: "💬", assignee: "cielo", state: "doing" },
+  { id: "t9", name: "Chats - Redes", icon: "💬", assignee: "bryan", state: "doing" },
   { id: "t10", name: "Subir Post Facebook", icon: "📤", assignee: "elizabeth", state: "todo" },
   { id: "t11", name: "Publicar Historias (IG)", icon: "📲", assignee: "cielo", state: "doing", note: "Mín 2 / Máx 5 al día" },
   { id: "t12", name: "Crear Banner WEB", icon: "🖥️", assignee: "elizabeth", state: "todo" },
-  { id: "t13", name: "Nutrición de Leads", icon: "🌱", assignee: "cielo", state: "todo" },
+  { id: "t13", name: "Nutrición de Leads", icon: "🌱", assignee: "bryan", state: "todo" },
   { id: "t14", name: "Cambiar Banner WEB", icon: "🔄", assignee: "elizabeth", state: "todo" },
 ];
 
@@ -38,16 +38,17 @@ export interface PostType {
   icon: string;
   desc: string;
   accent: string;
+  example?: string;
 }
 
 /** Post catalogue — "Tipos de Post". */
 export const POST_TYPES: PostType[] = [
-  { id: "p1", name: "Video con IA", icon: "🤖", desc: "Generado íntegramente con IA", accent: "#c18468" },
-  { id: "p2", name: "Video Híbrido", icon: "🎬", desc: "Grabación local + IA", accent: "#8b6357" },
-  { id: "p3", name: "Carrusel", icon: "🎠", desc: "Secuencia de imágenes", accent: "#D6AB99" },
-  { id: "p4", name: "Pedestal", icon: "🏛️", desc: "Producto en pedestal estético", accent: "#dbb09f" },
-  { id: "p5", name: "Especial", icon: "🎉", desc: "Fecha festiva del calendario", accent: "#71453f" },
-  { id: "p6", name: "Trends", icon: "🔥", desc: "Se copia un trend vigente", accent: "#dec2ad" },
+  { id: "p1", name: "Video con IA", icon: "🤖", desc: "Generado íntegramente con IA", accent: "#818cf8", example: "Avatar presentando el producto con voz IA + b-roll generado." },
+  { id: "p2", name: "Video Híbrido", icon: "🎬", desc: "Grabación local + IA", accent: "#22d3ee", example: "Clip grabado en el local + fondos o transiciones con IA." },
+  { id: "p3", name: "Carrusel", icon: "🎠", desc: "Secuencia de imágenes", accent: "#f472b6", example: "5-7 slides: problema → solución → beneficios → CTA." },
+  { id: "p4", name: "Pedestal", icon: "🏛️", desc: "Producto en pedestal estético", accent: "#d6ab99", example: "Producto centrado, fondo limpio, luz suave, macro." },
+  { id: "p5", name: "Especial", icon: "🎉", desc: "Fecha festiva del calendario", accent: "#34d399", example: "Pieza alusiva a la fecha (feriado/efeméride PY)." },
+  { id: "p6", name: "Trends", icon: "🔥", desc: "Se copia un trend vigente", accent: "#fbbf24", example: "Audio o formato viral adaptado a un producto ElaBela." },
 ];
 
 export interface WeeklyReq {
@@ -55,15 +56,16 @@ export interface WeeklyReq {
   format: string;
   freq: string;
   goal: string;
-  progress: number; // 0..1
+  done: number;
+  target: number;
 }
 
-/** Requisitos Semanales de Publicación. */
+/** Requisitos Semanales de Publicación — con conteo real hecho/meta de la semana. */
 export const WEEKLY_REQS: WeeklyReq[] = [
-  { platform: "Instagram", format: "Reels", freq: "3-5 / semana", goal: "Alcance / Viralidad", progress: 0.8 },
-  { platform: "Instagram", format: "Stories", freq: "2-5 / día", goal: "Fidelización / Venta", progress: 0.6 },
-  { platform: "TikTok", format: "Video Corto", freq: "1-2 / día", goal: "Crecimiento rápido", progress: 1 },
-  { platform: "Facebook", format: "Post / Video", freq: "3-4 / semana", goal: "Comunidad", progress: 0.5 },
+  { platform: "Instagram", format: "Reels", freq: "3-5 / semana", goal: "Alcance / Viralidad", done: 4, target: 5 },
+  { platform: "Instagram", format: "Stories", freq: "2-5 / día", goal: "Fidelización / Venta", done: 9, target: 14 },
+  { platform: "TikTok", format: "Video Corto", freq: "1-2 / día", goal: "Crecimiento rápido", done: 7, target: 10 },
+  { platform: "Facebook", format: "Post / Video", freq: "3-4 / semana", goal: "Comunidad", done: 2, target: 4 },
 ];
 
 export interface Project {
@@ -156,12 +158,27 @@ export interface Guion {
   publish: string;
   responsible: string;
   types: string[];
+  link?: string;
+  body?: string;
 }
 
 export const GUIONES: Guion[] = [
-  { id: "g1", name: "Rutina noche Glow", state: "listo", product: "Sérum Vitamina C", brand: "Elaluz", record: "2026-07-12", publish: "2026-07-16", responsible: "cielo", types: ["Video Híbrido"] },
-  { id: "g2", name: "Unboxing Blush", state: "editando", product: "Blush Cremoso", brand: "Tarte", record: "2026-07-14", publish: "2026-07-18", responsible: "elizabeth", types: ["Carrusel", "Trends"] },
-  { id: "g3", name: "Tip protección solar", state: "falta", product: "Protector Solar FPS50", brand: "Elaluz", record: "2026-07-20", publish: "2026-07-22", responsible: "cielo", types: ["Video con IA"] },
+  {
+    id: "g1", name: "Rutina noche Glow", state: "listo", product: "Sérum Vitamina C", brand: "Elaluz",
+    record: "2026-07-12", publish: "2026-07-16", responsible: "cielo", types: ["Video Híbrido"],
+    link: "https://drive.google.com/",
+    body: "GANCHO (0-3s): «Tu piel a las 11pm vs con este sérum».\nDESARROLLO: aplicar 3 gotas, masaje ascendente, mostrar textura.\nCIERRE: «Glow que se nota al despertar» + CTA a la web.",
+  },
+  {
+    id: "g2", name: "Unboxing Blush", state: "editando", product: "Blush Cremoso", brand: "Tarte",
+    record: "2026-07-14", publish: "2026-07-18", responsible: "elizabeth", types: ["Carrusel", "Trends"],
+    body: "Abrir la caja en cámara, primer plano del color, swatch en la mano y en la mejilla. Trend audio vigente.",
+  },
+  {
+    id: "g3", name: "Tip protección solar", state: "falta", product: "Protector Solar FPS50", brand: "Elaluz",
+    record: "2026-07-20", publish: "2026-07-22", responsible: "cielo", types: ["Video con IA"],
+    body: "",
+  },
 ];
 
 export interface SpecialDate {

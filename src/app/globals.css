@@ -3,14 +3,17 @@
 @tailwind utilities;
 
 :root {
-  /* --font-display / --font-sans are injected by next/font in layout.tsx */
-  --bg: #160d0c;
-  --bg-soft: #1e1311;
-  --card: rgba(36, 23, 21, 0.62);
-  --border: rgba(214, 171, 153, 0.14);
-  --text: #f3e4d8;
-  --muted: #c9a996;
-  --terra: #c18468;
+  /* --font-sans injected by next/font in layout.tsx; display reuses it (tight tracking via headings) */
+  --font-display: var(--font-sans);
+  --bg: #08080a;
+  --bg-2: #0c0c0f;
+  --card: rgba(20, 20, 24, 0.55);
+  --card-solid: #121216;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --faint: #71717a;
   --nude: #d6ab99;
 }
 
@@ -21,6 +24,7 @@
 
   html {
     scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
@@ -34,88 +38,93 @@
 
   h1, h2, h3, h4 {
     font-family: var(--font-display);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+    font-weight: 600;
   }
 
   ::selection {
-    background: rgba(193, 132, 104, 0.35);
+    background: rgba(214, 171, 153, 0.28);
     color: #fff;
   }
 
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: rgba(214, 171, 153, 0.18);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(214, 171, 153, 0.32);
-    background-clip: padding-box;
-  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); background-clip: padding-box; }
 
   :focus-visible {
-    outline: 2px solid var(--terra);
+    outline: 2px solid rgba(214, 171, 153, 0.7);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 6px;
   }
+
+  input, textarea, select { color-scheme: dark; }
 }
 
 @layer components {
-  /* Glass surface used across cards, panels and the sidebar. */
   .glass {
     background: var(--card);
-    backdrop-filter: blur(16px) saturate(120%);
-    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
     border: 1px solid var(--border);
-    box-shadow:
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
-      0 24px 60px -30px rgba(0, 0, 0, 0.85);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04), 0 20px 50px -28px rgba(0, 0, 0, 0.9);
   }
 
   .glass-hover {
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.35s, box-shadow 0.35s;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s, background 0.2s;
   }
   .glass-hover:hover {
-    transform: translateY(-3px);
-    border-color: rgba(214, 171, 153, 0.3);
-    box-shadow:
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
-      0 30px 70px -30px rgba(0, 0, 0, 0.9);
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    background: rgba(26, 26, 30, 0.7);
   }
 
   .text-gradient {
-    background: linear-gradient(120deg, #fcebdb 0%, #d6ab99 45%, #c18468 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #b9b9c2 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
   .eyebrow {
-    font-family: var(--font-sans);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
-    letter-spacing: 0.22em;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--faint);
   }
 
-  .divider-warm {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(214, 171, 153, 0.28), transparent);
+  .divider { height: 1px; background: var(--border); }
+
+  /* Input primitives */
+  .field {
+    width: 100%;
+    border-radius: 0.85rem;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.35);
+    padding: 0.6rem 0.85rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
   }
+  .field:focus { border-color: rgba(214, 171, 153, 0.55); background: rgba(0, 0, 0, 0.5); }
+  .field::placeholder { color: var(--faint); }
+
+  /* Status backgrounds for tasks / guiones — instant, no JS animation */
+  .state-todo   { background: rgba(255,255,255,0.03); border-color: var(--border); }
+  .state-doing  { background: rgba(59,130,246,0.12);  border-color: rgba(59,130,246,0.4); }
+  .state-done   { background: rgba(34,197,94,0.12);   border-color: rgba(34,197,94,0.4); }
+  .state-amber  { background: rgba(245,158,11,0.12);  border-color: rgba(245,158,11,0.4); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
