@@ -1,13 +1,9 @@
-import { getUser } from "@/lib/auth";
+"use client";
+
+import { useUser } from "@/lib/user-context";
 import PerfilView from "@/components/views/PerfilView";
 
-export default async function PerfilPage() {
-  const user = await getUser();
-  return (
-    <PerfilView
-      fullName={user?.fullName ?? "Equipo"}
-      username={user?.username ?? "usuario"}
-      role={user?.role ?? "marketer"}
-    />
-  );
+export default function PerfilPage() {
+  const u = useUser();
+  return <PerfilView id={u.id} fullName={u.fullName} username={u.username} role={u.role} />;
 }

@@ -9,9 +9,11 @@ export interface DailyTask {
   id: string;
   name: string;
   icon: string;
-  assignee: string; // profile username
+  assignee: string; // profile username assigned TODAY
   state: TaskState;
   note?: string;
+  /** If present with 2+ users, the task rotates among them day by day; otherwise it's fixed to `assignee`. */
+  rotation?: string[];
 }
 
 /** Daily recurring tasks — from the "Tareas Diarias" group. */
@@ -26,7 +28,7 @@ export const DAILY_TASKS: DailyTask[] = [
   { id: "t8", name: "Subir Post TikTok", icon: "📤", assignee: "elizabeth", state: "todo" },
   { id: "t9", name: "Chats - Redes", icon: "💬", assignee: "bryan", state: "doing" },
   { id: "t10", name: "Subir Post Facebook", icon: "📤", assignee: "elizabeth", state: "todo" },
-  { id: "t11", name: "Publicar Historias (IG)", icon: "📲", assignee: "cielo", state: "doing", note: "Mín 2 / Máx 5 al día" },
+  { id: "t11", name: "Publicar Historias", icon: "📲", assignee: "cielo", state: "doing", note: "Ver panel de historias", rotation: ["cielo", "elizabeth"] },
   { id: "t12", name: "Crear Banner WEB", icon: "🖥️", assignee: "elizabeth", state: "todo" },
   { id: "t13", name: "Nutrición de Leads", icon: "🌱", assignee: "bryan", state: "todo" },
   { id: "t14", name: "Cambiar Banner WEB", icon: "🔄", assignee: "elizabeth", state: "todo" },
@@ -39,6 +41,7 @@ export interface PostType {
   desc: string;
   accent: string;
   example?: string;
+  exampleImage?: string; // data URL de una imagen de ejemplo propia
 }
 
 /** Post catalogue — "Tipos de Post". */
@@ -68,13 +71,35 @@ export const WEEKLY_REQS: WeeklyReq[] = [
   { platform: "Facebook", format: "Post / Video", freq: "3-4 / semana", goal: "Comunidad", done: 2, target: 4 },
 ];
 
+export interface ProjectStep { label: string; done: boolean }
+/** Historias por plataforma — el Admin edita mínimo/máximo/horarios. */
+export interface StoryPlatform {
+  platform: "Instagram" | "Facebook" | "TikTok";
+  icon: string;
+  min: number;
+  max: number;
+  schedules: string[]; // horarios sugeridos, ej. ["09:00","13:00","18:00"]
+  done: number;        // subidas hoy
+  assignee: string;    // a quién le toca hoy
+}
+
+export const STORY_CONFIG: StoryPlatform[] = [
+  { platform: "Instagram", icon: "📸", min: 2, max: 5, schedules: ["09:00", "13:00", "18:00"], done: 3, assignee: "cielo" },
+  { platform: "Facebook", icon: "📘", min: 1, max: 2, schedules: ["12:00"], done: 1, assignee: "elizabeth" },
+  { platform: "TikTok", icon: "🎵", min: 1, max: 2, schedules: ["17:00"], done: 0, assignee: "cielo" },
+];
+
 export interface Project {
   id: string;
   name: string;
   owner: string;
   status: "todo" | "doing" | "done";
-  due: string;
-  steps: { label: string; done: boolean }[];
+  createdAt: string;          // fecha de creación
+  due?: string;               // fecha de entrega (opcional)
+  archived?: boolean;
+  contentMode: "steps" | "note";
+  steps: ProjectStep[];
+  note?: string;              // markdown (cuando contentMode = "note")
 }
 
 export const PROJECTS: Project[] = [
@@ -83,7 +108,9 @@ export const PROJECTS: Project[] = [
     name: "Relanzamiento línea Glow",
     owner: "cielo",
     status: "doing",
+    createdAt: "2026-07-08",
     due: "2026-07-28",
+    contentMode: "steps",
     steps: [
       { label: "Definir concepto visual", done: true },
       { label: "Sesión de fotos en pedestal", done: true },
@@ -96,19 +123,21 @@ export const PROJECTS: Project[] = [
     name: "Campaña Día del Amigo",
     owner: "elizabeth",
     status: "todo",
+    createdAt: "2026-07-13",
     due: "2026-07-30",
-    steps: [
-      { label: "Guion del video", done: false },
-      { label: "Diseño de promo", done: false },
-      { label: "Copy + hashtags", done: false },
-    ],
+    contentMode: "note",
+    steps: [],
+    note: "## Objetivo\nReforzar comunidad y ventas por el **Día del Amigo** (30/07).\n\n### Ideas\n- Reel *«etiquetá a tu amiga glow»* con sorteo\n- Combo 2x1 en labiales\n- Historia con encuesta: *¿cuál es tu producto ElaBela favorito?*\n\n> Tono cercano, divertido, foco en amistad.",
   },
   {
     id: "pr3",
     name: "Renovación de Banners WEB",
     owner: "cielo",
     status: "done",
+    createdAt: "2026-07-01",
     due: "2026-07-10",
+    contentMode: "steps",
+    archived: true,
     steps: [
       { label: "Nuevos banners home", done: true },
       { label: "Publicar en tienda", done: true },
@@ -202,12 +231,14 @@ export interface ToolCategory {
   title: string;
   emoji: string;
   desc: string;
+  kind: "prompt" | "link"; // cómo se renderiza y usa cada recurso
   items: { label: string; href?: string; note?: string }[];
 }
 
 export const TOOL_CATEGORIES: ToolCategory[] = [
   {
     id: "prompts",
+    kind: "prompt",
     title: "Prompts",
     emoji: "💬",
     desc: "Prompts listos para copiar",
@@ -218,6 +249,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   },
   {
     id: "gems",
+    kind: "link",
     title: "GEMS de Gemini",
     emoji: "💎",
     desc: "Enlaces a cada GEM",
@@ -225,6 +257,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   },
   {
     id: "apps",
+    kind: "link",
     title: "Apps",
     emoji: "📲",
     desc: "Herramientas externas",
@@ -235,6 +268,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   },
   {
     id: "ia",
+    kind: "link",
     title: "IA",
     emoji: "🤖",
     desc: "Herramientas de IA del equipo",
@@ -242,6 +276,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   },
   {
     id: "ads",
+    kind: "link",
     title: "Ads",
     emoji: "📢",
     desc: "Plataformas publicitarias",
@@ -253,6 +288,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   },
   {
     id: "links",
+    kind: "link",
     title: "Enlaces Oficiales",
     emoji: "🔗",
     desc: "Redes y sitio de ElaBela",
@@ -265,13 +301,18 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
   },
 ];
 
-/** Platforms tracked in the credentials vault (values are never stored in the repo). */
+/**
+ * Credential vault seed. `scope`:
+ *   "shared"  = la ve TODO el equipo (cuentas/herramientas compartidas)
+ *   "private" = solo la ve quien la creó
+ * (los valores reales nunca se guardan en el repo)
+ */
 export const CREDENTIAL_PLATFORMS = [
-  { platform: "Instagram", icon: "📸", scope: "personal" },
-  { platform: "Facebook", icon: "📘", scope: "personal" },
-  { platform: "TikTok", icon: "🎵", scope: "personal" },
-  { platform: "WhatsApp Business", icon: "💬", scope: "personal" },
-  { platform: "Later.com", icon: "📅", scope: "admin" },
-  { platform: "Metricool", icon: "📊", scope: "admin" },
-  { platform: "Relatorios (Catálogo)", icon: "📦", scope: "admin" },
+  { platform: "Instagram", icon: "📸", scope: "shared" },
+  { platform: "Facebook", icon: "📘", scope: "shared" },
+  { platform: "TikTok", icon: "🎵", scope: "shared" },
+  { platform: "WhatsApp Business", icon: "💬", scope: "shared" },
+  { platform: "Later.com", icon: "📅", scope: "shared" },
+  { platform: "Metricool", icon: "📊", scope: "shared" },
+  { platform: "Relatorios (Catálogo)", icon: "📦", scope: "shared" },
 ] as const;

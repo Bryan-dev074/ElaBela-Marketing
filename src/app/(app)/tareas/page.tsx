@@ -1,7 +1,9 @@
-import { getUser } from "@/lib/auth";
+"use client";
+
+import { useUser } from "@/lib/user-context";
 import TareasView from "@/components/views/TareasView";
 
-export default async function TareasPage() {
-  const user = await getUser();
-  return <TareasView role={user?.role ?? "marketer"} username={user?.username ?? "cielo"} />;
+export default function TareasPage() {
+  const u = useUser();
+  return <TareasView role={u.role} username={u.username} />;
 }

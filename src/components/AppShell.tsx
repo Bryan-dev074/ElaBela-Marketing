@@ -8,8 +8,10 @@ import { Menu, X, LogOut, ShieldCheck } from "lucide-react";
 import { NAV, type Role } from "@/lib/brand";
 import { signOut } from "@/app/login/actions";
 import { LogoBadge } from "@/components/LogoBadge";
+import { UserProvider } from "@/lib/user-context";
 
 export interface ShellUser {
+  id: string;
   username: string;
   fullName: string;
   role: Role;
@@ -134,7 +136,9 @@ export default function AppShell({ user, children }: { user: ShellUser; children
       </AnimatePresence>
 
       <main className="lg:pl-[17rem]">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-10">{children}</div>
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-10">
+          <UserProvider user={user}>{children}</UserProvider>
+        </div>
       </main>
     </div>
   );
