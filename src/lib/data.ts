@@ -40,6 +40,14 @@ const ROTATION_EPOCH_UTC = Date.UTC(2024, 0, 1);
  * only on those days. Tasks without `days` rotate every day; fixed tasks
  * return their `assignee`.
  */
+/**
+ * Whether the task belongs to this member. A rotating task belongs to EVERY
+ * member of the rotation (whoever is free can cover it); the daily priority
+ * («a quién le toca hoy») is `taskAssigneeToday`.
+ */
+export const taskBelongsTo = (t: DailyTask, username: string) =>
+  t.rotation && t.rotation.length > 1 ? t.rotation.includes(username) : t.assignee === username;
+
 export const taskAssigneeToday = (t: DailyTask, date = new Date()) => {
   if (!t.rotation || t.rotation.length < 2) return t.assignee;
   const diff = Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - ROTATION_EPOCH_UTC) / 86400000);

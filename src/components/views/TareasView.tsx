@@ -22,7 +22,7 @@ import {
 import { IconPicker } from "@/components/IconPicker";
 import { TimeListEditor } from "@/components/TimePicker";
 import { Avatar, AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
-import { WEEKDAYS, taskAppliesToday, taskAssigneeToday, type DailyTask, type TaskState, type StoryPlatform } from "@/lib/data";
+import { WEEKDAYS, taskAppliesToday, taskAssigneeToday, taskBelongsTo, type DailyTask, type TaskState, type StoryPlatform } from "@/lib/data";
 import { useDailyTasks, useStoryConfig } from "@/lib/db";
 import { useProfiles } from "@/lib/profiles";
 import type { Role } from "@/lib/brand";
@@ -95,11 +95,12 @@ function ProfileChip({ username, on, onClick }: { username: string; on: boolean;
 
 /* ---------------- Task rows ---------------- */
 
-function TaskRow({ t, i, isAdmin, onCycle, onEdit }: { t: DailyTask; i: number; isAdmin: boolean; onCycle: () => void; onEdit: () => void }) {
+function TaskRow({ t, i, isAdmin, me, onCycle, onEdit }: { t: DailyTask; i: number; isAdmin: boolean; me: string; onCycle: () => void; onEdit: () => void }) {
   const rotates = !!t.rotation && t.rotation.length > 1;
   const hasDays = !!t.days && t.days.length > 0 && t.days.length < 7;
   const done = t.state === "done";
   const assigneeToday = taskAssigneeToday(t);
+  const myTurn = assigneeToday === me;
   return (
     <motion.div
       layout
@@ -149,8 +150,16 @@ function TaskRow({ t, i, isAdmin, onCycle, onEdit }: { t: DailyTask; i: number; 
               <>
                 <Repeat className="h-3 w-3 text-nude" />
                 <AvatarStack usernames={t.rotation!} size={16} />
-                <span>
-                  hoy: <span className="capitalize text-[var(--muted)]">{assigneeToday}</span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                    myTurn
+                      ? "border-nude/50 bg-nude/15 text-nude shadow-[0_0_12px_-4px_rgba(214,171,153,0.7)]"
+                      : "border-white/10 bg-white/5 text-[var(--muted)]"
+                  }`}
+                  title={myTurn ? "Hoy es tu turno; si no podés, la puede cubrir cualquiera del grupo" : `Hoy le toca a ${assigneeToday}; podés cubrirla si hace falta`}
+                >
+                  <Avatar username={assigneeToday} size={12} />
+                  {myTurn ? "te toca hoy" : <>hoy: <span className="capitalize">{assigneeToday}</span></>}
                 </span>
               </>
             ) : (
@@ -239,11 +248,12 @@ export default function TareasView({ role, username }: { role: Role; username: s
   const [cfg, setCfg] = useState<StoryPlatform | null>(null);
   const isAdmin = role === "admin";
 
-  const inTab = useMemo(() => (tab === "mias" ? tasks.filter((t) => taskAssigneeToday(t) === username) : tasks), [tasks, tab, username]);
+  // «Mis tareas» incluye toda rotación donde participo (cualquiera del grupo puede cubrirla).
+  const inTab = useMemo(() => (tab === "mias" ? tasks.filter((t) => taskBelongsTo(t, username)) : tasks), [tasks, tab, username]);
   const todayTasks = useMemo(() => inTab.filter(taskAppliesToday), [inTab]);
   const otherTasks = useMemo(() => inTab.filter((t) => !taskAppliesToday(t)), [inTab]);
   const doneCount = todayTasks.filter((t) => t.state === "done").length;
-  const myTodayCount = useMemo(() => tasks.filter((t) => taskAssigneeToday(t) === username && taskAppliesToday(t)).length, [tasks, username]);
+  const myTodayCount = useMemo(() => tasks.filter((t) => taskBelongsTo(t, username) && taskAppliesToday(t)).length, [tasks, username]);
   const teamTodayCount = useMemo(() => tasks.filter(taskAppliesToday).length, [tasks]);
   const dayName = new Date().toLocaleDateString("es-PY", { weekday: "long" });
 
@@ -345,7 +355,7 @@ export default function TareasView({ role, username }: { role: Role; username: s
           <div className="space-y-2.5">
             <AnimatePresence mode="popLayout">
               {todayTasks.map((t, i) => (
-                <TaskRow key={t.id} t={t} i={i} isAdmin={isAdmin} onCycle={() => cycle(t.id)} onEdit={() => editTask(t)} />
+                <TaskRow key={t.id} t={t} i={i} isAdmin={isAdmin} me={username} onCycle={() => cycle(t.id)} onEdit={() => editTask(t)} />
               ))}
             </AnimatePresence>
           </div>

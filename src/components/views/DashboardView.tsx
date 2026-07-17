@@ -6,7 +6,7 @@ import { motion, animate, useMotionValue } from "framer-motion";
 import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Clock, Check } from "lucide-react";
 import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, IconGlyph } from "@/components/ui";
 import { Avatar, AvatarStack } from "@/components/Avatar";
-import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, todayWeekday, type TaskState } from "@/lib/data";
+import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, taskBelongsTo, todayWeekday, type TaskState } from "@/lib/data";
 import { useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
 import type { Role } from "@/lib/brand";
 
@@ -73,11 +73,12 @@ export default function DashboardView({ name, username, role }: { name: string; 
   const { items: stories } = useStoryConfig();
   const cycle = (id: string) => { const t = tasks.find((x) => x.id === id); if (t) updateTask(id, { state: NEXT[t.state] }); };
 
-  // Solo las tareas diarias que tocan hoy (según sus días configurados),
-  // asignadas a quien le toca HOY (las rotativas avanzan cada día).
+  // Solo las tareas diarias que tocan hoy (según sus días configurados).
+  // Las rotativas pertenecen a TODOS los del grupo (cualquiera puede cubrirlas);
+  // el chip de turno marca a quién le toca hoy.
   const todays = tasks.filter(taskAppliesToday);
-  const mine = todays.filter((t) => taskAssigneeToday(t) === username);
-  const team = todays.filter((t) => taskAssigneeToday(t) !== username);
+  const mine = todays.filter((t) => taskBelongsTo(t, username));
+  const team = todays.filter((t) => !taskBelongsTo(t, username));
   const myDone = mine.filter((t) => t.state === "done").length;
   const teamDone = team.filter((t) => t.state === "done").length;
   const teamMembers = Array.from(new Set(team.map((t) => taskAssigneeToday(t))));
@@ -177,7 +178,21 @@ export default function DashboardView({ name, username, role }: { name: string; 
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/25 text-sm">
                         {t.state === "done" ? <Check className="h-4 w-4 text-emerald-400" /> : <IconGlyph icon={t.icon} size={t.icon.startsWith("data:") || t.icon.startsWith("http") ? 28 : 16} rounded="rounded-md" />}
                       </span>
-                      <span className={`truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
+                      <span className="min-w-0">
+                        <span className={`block truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
+                        {t.rotation && t.rotation.length > 1 && (
+                          <span
+                            className={`mt-0.5 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                              taskAssigneeToday(t) === username
+                                ? "border-nude/50 bg-nude/15 text-nude"
+                                : "border-white/10 bg-white/5 text-[var(--muted)]"
+                            }`}
+                          >
+                            <Avatar username={taskAssigneeToday(t)} size={12} />
+                            {taskAssigneeToday(t) === username ? "te toca hoy" : <>hoy: <span className="capitalize">{taskAssigneeToday(t)}</span></>}
+                          </span>
+                        )}
+                      </span>
                     </span>
                     <StatePill state={t.state} pulse />
                   </button>
