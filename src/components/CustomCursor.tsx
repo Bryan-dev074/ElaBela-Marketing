@@ -3,8 +3,10 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Premium custom cursor: a precise dot + a trailing ring that grows and turns
- * nude over interactive elements and shrinks on press. Fine-pointer devices only;
+ * Premium custom cursor: a precise dot + a ring that grows and turns nude over
+ * interactive elements and shrinks on press. Everything tracks the mouse
+ * INSTANTLY (transform set directly on mousemove — no RAF loop, no trailing
+ * lerp), so it stays fluid even on slow machines. Fine-pointer devices only;
  * inputs keep the native text caret so typing stays natural.
  *
  * Elements can tint the ring and attach a floating label via data attributes:
@@ -22,12 +24,11 @@ export default function CustomCursor() {
     const tag = tagRef.current;
     if (!dot || !ring || !tag) return;
 
-    let mx = -100, my = -100, rx = -100, ry = -100;
-    let raf = 0;
-
     const move = (e: MouseEvent) => {
-      mx = e.clientX; my = e.clientY;
-      dot.style.transform = `translate(${mx}px, ${my}px)`;
+      const t = `translate(${e.clientX}px, ${e.clientY}px)`;
+      dot.style.transform = t;
+      ring.style.transform = t;
+      tag.style.transform = `translate(${e.clientX + 22}px, ${e.clientY + 18}px)`;
       if (ring.dataset.visible !== "1") { ring.dataset.visible = "1"; dot.dataset.visible = "1"; }
     };
     const over = (e: MouseEvent) => {
@@ -56,12 +57,6 @@ export default function CustomCursor() {
     const down = () => (ring.dataset.down = "1");
     const up = () => (ring.dataset.down = "0");
     const leave = () => { ring.dataset.visible = "0"; dot.dataset.visible = "0"; tag.dataset.visible = "0"; };
-    const loop = () => {
-      rx += (mx - rx) * 0.2; ry += (my - ry) * 0.2;
-      ring.style.transform = `translate(${rx}px, ${ry}px)`;
-      tag.style.transform = `translate(${rx + 22}px, ${ry + 18}px)`;
-      raf = requestAnimationFrame(loop);
-    };
 
     document.body.classList.add("has-custom-cursor");
     window.addEventListener("mousemove", move, { passive: true });
@@ -69,10 +64,8 @@ export default function CustomCursor() {
     window.addEventListener("mousedown", down);
     window.addEventListener("mouseup", up);
     document.addEventListener("mouseleave", leave);
-    loop();
 
     return () => {
-      cancelAnimationFrame(raf);
       document.body.classList.remove("has-custom-cursor");
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseover", over);
