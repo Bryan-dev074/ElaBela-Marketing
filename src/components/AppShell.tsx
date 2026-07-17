@@ -9,6 +9,8 @@ import { NAV, type Role } from "@/lib/brand";
 import { signOut } from "@/app/login/actions";
 import { LogoBadge } from "@/components/LogoBadge";
 import { UserProvider } from "@/lib/user-context";
+import { ProfilesProvider } from "@/lib/profiles";
+import { Avatar } from "@/components/Avatar";
 
 export interface ShellUser {
   id: string;
@@ -58,17 +60,15 @@ export default function AppShell({ user, children }: { user: ShellUser; children
         <LogoBadge size={46} />
         <div>
           <p className="font-display text-lg font-semibold leading-none text-white">ElaBela</p>
-          <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--faint)]">Marketing Platform</p>
+          <p className="glow-text mt-1 text-[10px] font-semibold uppercase tracking-[0.18em]">Marketing Platform</p>
         </div>
       </div>
       <div className="divider mx-4" />
       {nav}
       <div className="divider mx-4" />
       <div className="p-4">
-        <div className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.03] p-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-sm font-semibold text-white">
-            {user.fullName.charAt(0).toUpperCase()}
-          </div>
+        <div className="card-sheen flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.03] p-3">
+          <Avatar username={user.username} size={40} ring className="rounded-lg" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-white">{user.fullName}</p>
             {isAdmin ? (
@@ -94,6 +94,7 @@ export default function AppShell({ user, children }: { user: ShellUser; children
   );
 
   return (
+    <ProfilesProvider>
     <div className="relative min-h-screen">
       <aside className="glass fixed inset-y-0 left-0 z-30 hidden w-[17rem] flex-col border-r border-white/8 lg:flex">
         {sidebarInner}
@@ -141,5 +142,6 @@ export default function AppShell({ user, children }: { user: ShellUser; children
         </div>
       </main>
     </div>
+    </ProfilesProvider>
   );
 }

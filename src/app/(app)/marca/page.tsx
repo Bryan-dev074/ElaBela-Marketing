@@ -4,19 +4,22 @@ import { useState } from "react";
 import { Plus, Copy, Check } from "lucide-react";
 import { PageHeader, Card, Reveal, Button, Field, Input } from "@/components/ui";
 import { BRAND_COLORS } from "@/lib/brand";
+import { useBrandAssets } from "@/lib/db";
 
 interface Swatch { name: string; role: string; hex: string }
 interface Font { name: string; family: string }
 
 export default function MarcaPage() {
-  const [colors, setColors] = useState<Swatch[]>(BRAND_COLORS.map((c) => ({ ...c })));
-  const [fonts, setFonts] = useState<Font[]>([{ name: "Inter (UI)", family: "var(--font-sans)" }]);
+  const { items: assets, add } = useBrandAssets();
   const [copied, setCopied] = useState<string | null>(null);
   const [newColor, setNewColor] = useState({ name: "", hex: "#d6ab99" });
   const [newFont, setNewFont] = useState("");
 
-  const addColor = () => { if (newColor.name.trim()) { setColors((c) => [...c, { name: newColor.name.trim(), role: "Nuevo", hex: newColor.hex }]); setNewColor({ name: "", hex: "#d6ab99" }); } };
-  const addFont = () => { if (newFont.trim()) { setFonts((f) => [...f, { name: newFont.trim(), family: `'${newFont.trim()}', var(--font-sans)` }]); setNewFont(""); } };
+  const colors: Swatch[] = [...BRAND_COLORS.map((c) => ({ ...c })), ...assets.filter((a) => a.kind === "color").map((a) => ({ name: a.name, role: a.role || "Nuevo", hex: a.value }))];
+  const fonts: Font[] = [{ name: "Inter (UI)", family: "var(--font-sans)" }, ...assets.filter((a) => a.kind === "font").map((a) => ({ name: a.name, family: `'${a.name}', var(--font-sans)` }))];
+
+  const addColor = () => { if (newColor.name.trim()) { add({ id: "ba" + Date.now(), kind: "color", name: newColor.name.trim(), value: newColor.hex, role: "Nuevo" }); setNewColor({ name: "", hex: "#d6ab99" }); } };
+  const addFont = () => { if (newFont.trim()) { add({ id: "ba" + Date.now(), kind: "font", name: newFont.trim(), value: newFont.trim(), role: "" }); setNewFont(""); } };
   const copyHex = (hex: string) => navigator.clipboard?.writeText(hex).then(() => { setCopied(hex); setTimeout(() => setCopied(null), 1200); });
 
   return (

@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, animate, useMotionValue } from "framer-motion";
 import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Clock, Check } from "lucide-react";
-import { Card, Reveal, StatCard, StatePill, taskStateClass } from "@/components/ui";
-import { DAILY_TASKS, PROJECTS, SPECIAL_DATES, WEEKLY_REQS, STORY_CONFIG, type DailyTask, type TaskState } from "@/lib/data";
+import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, IconGlyph } from "@/components/ui";
+import { Avatar, AvatarStack } from "@/components/Avatar";
+import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, todayWeekday, type TaskState } from "@/lib/data";
+import { useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
 import type { Role } from "@/lib/brand";
 
 const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const NEXT: Record<TaskState, TaskState> = { todo: "doing", doing: "done", done: "todo" };
+const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 function greeting() {
   const h = new Date().getHours();
@@ -19,87 +22,229 @@ function greeting() {
   return "Buenas noches";
 }
 
-export default function DashboardView({ name, username, role }: { name: string; username: string; role: Role }) {
-  const [tasks, setTasks] = useState<DailyTask[]>(DAILY_TASKS);
-  const cycle = (id: string) => setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, state: NEXT[t.state] } : t)));
+/** Número que cuenta hacia arriba con framer-motion (tabular via .num). */
+function AnimatedNumber({ value, className = "" }: { value: number; className?: string }) {
+  const mv = useMotionValue(0);
+  const [text, setText] = useState("0");
+  useEffect(() => {
+    const unsub = mv.on("change", (v) => setText(String(Math.round(v))));
+    const controls = animate(mv, value, { duration: 0.9, ease: EASE });
+    return () => {
+      unsub();
+      controls.stop();
+    };
+  }, [value, mv]);
+  return <span className={`num ${className}`}>{text}</span>;
+}
 
-  const mine = tasks.filter((t) => t.assignee === username);
-  const team = tasks.filter((t) => t.assignee !== username);
+/** StatCard local con valor animado (misma anatomía que StatCard de ui). */
+function Stat({
+  label,
+  icon,
+  value,
+  hint,
+  delay = 0,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+  delay?: number;
+}) {
+  return (
+    <Reveal delay={delay} className="h-full">
+      <Card className="card-sheen h-full p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="eyebrow">{label}</span>
+          <span className="text-[var(--muted)]">{icon}</span>
+        </div>
+        <p className="font-display text-3xl font-semibold text-white">{value}</p>
+        {hint}
+      </Card>
+    </Reveal>
+  );
+}
+
+const countdownLabel = (days: number) => (days === 0 ? "hoy" : days === 1 ? "mañana" : `en ${days} días`);
+
+export default function DashboardView({ name, username, role }: { name: string; username: string; role: Role }) {
+  const { items: tasks, update: updateTask } = useDailyTasks();
+  const { items: projects } = useProjects();
+  const { items: stories } = useStoryConfig();
+  const cycle = (id: string) => { const t = tasks.find((x) => x.id === id); if (t) updateTask(id, { state: NEXT[t.state] }); };
+
+  // Solo las tareas diarias que tocan hoy (según sus días configurados),
+  // asignadas a quien le toca HOY (las rotativas avanzan cada día).
+  const todays = tasks.filter(taskAppliesToday);
+  const mine = todays.filter((t) => taskAssigneeToday(t) === username);
+  const team = todays.filter((t) => taskAssigneeToday(t) !== username);
   const myDone = mine.filter((t) => t.state === "done").length;
   const teamDone = team.filter((t) => t.state === "done").length;
-  const activeProjects = PROJECTS.filter((p) => p.status === "doing" && !p.archived).length;
+  const teamMembers = Array.from(new Set(team.map((t) => taskAssigneeToday(t))));
+  const activeProjects = projects.filter((p) => p.status === "doing" && !p.archived).length;
   const wkDone = WEEKLY_REQS.reduce((a, r) => a + r.done, 0);
   const wkTarget = WEEKLY_REQS.reduce((a, r) => a + r.target, 0);
-  const compliance = Math.round((wkDone / wkTarget) * 100);
-  const myStories = STORY_CONFIG.filter((s) => s.assignee === username);
+  const compliance = wkTarget ? Math.round((wkDone / wkTarget) * 100) : 0;
+  const myStories = stories.filter((s) => s.assignee === username);
   const today = new Date().toLocaleDateString("es-PY", { weekday: "long", day: "numeric", month: "long" });
-  const todayIdx = (new Date().getDay() + 6) % 7;
+  const todayIdx = todayWeekday();
+
+  // Próximas fechas: solo desde hoy, ordenadas, con cuenta regresiva
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+  const upcoming = SPECIAL_DATES
+    .map((s) => ({ ...s, when: new Date(s.date + "T00:00:00") }))
+    .filter((s) => s.when.getTime() >= startToday.getTime())
+    .sort((a, b) => a.when.getTime() - b.when.getTime())
+    .slice(0, 4);
+  const daysUntil = (d: Date) => Math.round((d.getTime() - startToday.getTime()) / 86400000);
 
   return (
     <div>
-      <motion.header initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-8">
+      <motion.header initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="mb-8">
         <p className="eyebrow mb-2 capitalize">{today}</p>
-        <h1 className="text-4xl font-semibold sm:text-5xl">{greeting()}, <span className="text-nude">{name.split(" ")[0]}</span></h1>
-        <p className="mt-3 text-sm text-[var(--muted)]">Tocá tus tareas para cambiar su estado. Cada clic también mueve el fondo.</p>
+        <h1 className="text-4xl font-semibold sm:text-5xl">
+          {greeting()}, <span className="glow-text">{name.split(" ")[0]}</span>
+        </h1>
+        <p className="mt-3 text-sm text-[var(--muted)]">Tocá una tarea para pasarla de estado. Hoy solo aparecen las que tocan hoy.</p>
       </motion.header>
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Reveal><StatCard label="Mis tareas" value={`${myDone}/${mine.length || 0}`} hint="listas hoy" icon={<CheckCircle2 className="h-5 w-5" />} /></Reveal>
-        <Reveal delay={0.05}><StatCard label="Equipo" value={`${teamDone}/${team.length}`} hint="listas hoy" icon={<Users className="h-5 w-5" />} /></Reveal>
-        <Reveal delay={0.1}><StatCard label="Proyectos" value={String(activeProjects)} hint="en progreso" icon={<FolderKanban className="h-5 w-5" />} /></Reveal>
-        <Reveal delay={0.15}><StatCard label="Cumplimiento" value={`${compliance}%`} hint={`${wkDone}/${wkTarget} esta semana`} icon={<TrendingUp className="h-5 w-5" />} /></Reveal>
+        <Stat
+          label="Mis tareas"
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          value={<><AnimatedNumber value={myDone} /><span className="mx-0.5 text-xl text-[var(--faint)]">/</span><AnimatedNumber value={mine.length} /></>}
+          hint={<p className="mt-1 text-xs text-[var(--muted)]">listas hoy</p>}
+        />
+        <Stat
+          delay={0.05}
+          label="Equipo"
+          icon={<Users className="h-5 w-5" />}
+          value={<><AnimatedNumber value={teamDone} /><span className="mx-0.5 text-xl text-[var(--faint)]">/</span><AnimatedNumber value={team.length} /></>}
+          hint={<p className="mt-1 text-xs text-[var(--muted)]">listas hoy</p>}
+        />
+        <Stat
+          delay={0.1}
+          label="Proyectos"
+          icon={<FolderKanban className="h-5 w-5" />}
+          value={<AnimatedNumber value={activeProjects} />}
+          hint={<p className="mt-1 text-xs text-[var(--muted)]">en progreso</p>}
+        />
+        <Stat
+          delay={0.15}
+          label="Cumplimiento"
+          icon={<TrendingUp className="h-5 w-5" />}
+          value={<><AnimatedNumber value={compliance} /><span className="text-xl text-[var(--muted)]">%</span></>}
+          hint={
+            <div className="mt-2.5">
+              <div className="h-1 overflow-hidden rounded-full bg-white/8">
+                <div
+                  className="h-full animate-shimmer rounded-full"
+                  style={{
+                    width: `${Math.min(compliance, 100)}%`,
+                    background: "linear-gradient(90deg, #b98a76, #ffe4d3, #d6ab99, #b98a76)",
+                    backgroundSize: "200% 100%",
+                  }}
+                />
+              </div>
+              <p className="num mt-1.5 text-xs text-[var(--muted)]">{wkDone}/{wkTarget} esta semana</p>
+            </div>
+          }
+        />
       </div>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        {/* Punto focal de la vista */}
         <Reveal delay={0.1}>
-          <Card className="flex h-full flex-col p-6" hover={false}>
+          <Card className="ring-glow flex h-full flex-col p-6" hover={false}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Mis tareas</h2>
-              <Link href="/tareas" className="flex items-center gap-1 text-xs text-nude transition hover:text-white">Ver todas <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/tareas" data-cursor-label="Abrir" className="glow-link flex items-center gap-1 text-xs text-nude transition hover:text-white">
+                Ver todas <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
             <div className="space-y-2">
-              {mine.length ? mine.map((t) => (
-                <button key={t.id} onClick={() => cycle(t.id)} className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150 hover:brightness-125 ${taskStateClass(t.state)}`}>
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-black/25 text-sm">{t.state === "done" ? <Check className="h-4 w-4 text-emerald-400" /> : t.icon}</span>
-                    <span className={`truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
-                  </span>
-                  <StatePill state={t.state} />
-                </button>
-              )) : <p className="rounded-xl border border-dashed border-white/10 py-8 text-center text-sm text-[var(--muted)]">Sin tareas asignadas hoy 🎉</p>}
+              {mine.length ? (
+                mine.map((t, i) => (
+                  <button
+                    key={t.id}
+                    onClick={() => cycle(t.id)}
+                    {...stateCursorProps(t.state)}
+                    style={{ animationDelay: `${i * 40}ms` }}
+                    className={`press animate-fade-up flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150 hover:brightness-125 ${taskStateClass(t.state)}`}
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/25 text-sm">
+                        {t.state === "done" ? <Check className="h-4 w-4 text-emerald-400" /> : <IconGlyph icon={t.icon} size={t.icon.startsWith("data:") || t.icon.startsWith("http") ? 28 : 16} rounded="rounded-md" />}
+                      </span>
+                      <span className={`truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
+                    </span>
+                    <StatePill state={t.state} pulse />
+                  </button>
+                ))
+              ) : (
+                <EmptyState icon="🌙" title="Sin tareas para hoy" hint="Nada de lo tuyo toca hoy. Aprovechá para adelantar un proyecto." />
+              )}
             </div>
           </Card>
         </Reveal>
 
         <Reveal delay={0.15}>
-          <Card className="flex h-full flex-col p-6" hover={false}>
-            <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold text-white">Tareas del equipo</h2><span className="text-xs text-[var(--faint)]">{teamDone}/{team.length} listas</span></div>
+          <Card className="card-sheen flex h-full flex-col p-6" hover={false}>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg font-semibold text-white">Tareas del equipo</h2>
+                {teamMembers.length > 0 && <AvatarStack usernames={teamMembers} size={20} />}
+              </div>
+              <span className="num text-xs text-[var(--faint)]">{teamDone}/{team.length} listas</span>
+            </div>
             <div className="space-y-2">
-              {team.slice(0, 6).map((t) => (
-                <div key={t.id} className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 ${taskStateClass(t.state)}`}>
-                  <span className="flex min-w-0 items-center gap-2.5"><span className="text-base">{t.icon}</span><span className="min-w-0"><span className={`block truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span><span className="text-[11px] capitalize text-[var(--faint)]">@{t.assignee}</span></span></span>
-                  <StatePill state={t.state} />
-                </div>
-              ))}
+              {team.length ? (
+                team.slice(0, 6).map((t, i) => (
+                  <div
+                    key={t.id}
+                    {...stateCursorProps(t.state)}
+                    style={{ animationDelay: `${i * 40}ms` }}
+                    className={`animate-fade-up flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 ${taskStateClass(t.state)}`}
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <IconGlyph icon={t.icon} size={t.icon.startsWith("data:") || t.icon.startsWith("http") ? 26 : 18} rounded="rounded-md" />
+                      <span className="min-w-0">
+                        <span className={`block truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
+                        <span className="mt-0.5 flex items-center gap-1.5 text-[11px] capitalize text-[var(--faint)]">
+                          <Avatar username={taskAssigneeToday(t)} size={14} /> {taskAssigneeToday(t)}
+                        </span>
+                      </span>
+                    </span>
+                    <StatePill state={t.state} pulse />
+                  </div>
+                ))
+              ) : (
+                <EmptyState icon="🫧" title="El equipo está libre hoy" hint="Ninguna tarea del resto del equipo toca hoy." />
+              )}
             </div>
           </Card>
         </Reveal>
       </div>
 
-      {/* Story schedules for me */}
+      {/* Mis horarios de historias */}
       {myStories.length > 0 && (
         <Reveal delay={0.1} className="mb-6">
           <Card className="p-6" hover={false}>
-            <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white"><Clock className="h-5 w-5 text-nude" /> Tus horarios de historias hoy</h2>
+            <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
+              <Clock className="glow-pulse h-5 w-5 rounded-full text-nude" /> Tus horarios de historias hoy
+            </h2>
             <p className="mb-4 text-xs text-[var(--muted)]">Te toca subir historias en estos horarios.</p>
             <div className="grid gap-3 sm:grid-cols-3">
-              {myStories.map((s) => (
-                <div key={s.platform} className="rounded-xl border border-white/8 bg-black/20 p-4">
+              {myStories.map((s, i) => (
+                <div key={s.platform} style={{ animationDelay: `${i * 50}ms` }} className="card-sheen animate-fade-up rounded-xl border border-white/8 bg-black/20 p-4">
                   <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-white"><span>{s.icon}</span> {s.platform}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {s.schedules.map((h) => <span key={h} className="rounded-full border border-nude/30 bg-nude/10 px-2.5 py-1 text-xs text-nude">{h}</span>)}
+                    {s.schedules.map((h) => (
+                      <span key={h} className="num rounded-full border border-nude/30 bg-nude/10 px-2.5 py-1 text-xs text-nude">{h}</span>
+                    ))}
                   </div>
-                  <p className="mt-2 text-[11px] text-[var(--faint)]">Mín {s.min} · máx {s.max}</p>
+                  <p className="num mt-2 text-[11px] text-[var(--faint)]">Mín {s.min} · máx {s.max}</p>
                 </div>
               ))}
             </div>
@@ -109,15 +254,26 @@ export default function DashboardView({ name, username, role }: { name: string; 
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Reveal delay={0.1} className="lg:col-span-2">
-          <Card className="p-6" hover={false}>
+          <Card className="card-sheen h-full p-6" hover={false}>
             <h2 className="mb-4 text-lg font-semibold text-white">Cumplimiento semanal</h2>
             <div className="space-y-4">
               {WEEKLY_REQS.map((r) => {
                 const pct = Math.round((r.done / r.target) * 100);
                 return (
                   <div key={r.platform + r.format}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs"><span className="text-white">{r.platform} · <span className="text-[var(--muted)]">{r.format}</span></span><span className="text-[var(--muted)]">{r.done}/{r.target} · {r.freq}</span></div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-white/8"><motion.div initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }} className={`h-full rounded-full ${pct >= 100 ? "bg-emerald-400" : pct >= 60 ? "bg-blue-400" : "bg-amber-400"}`} /></div>
+                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                      <span className="text-white">{r.platform} · <span className="text-[var(--muted)]">{r.format}</span></span>
+                      <span className="num text-[var(--muted)]">{r.done}/{r.target} · {r.freq}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        whileInView={{ width: `${Math.min(pct, 100)}%` }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.7, ease: EASE }}
+                        className={`h-full rounded-full ${pct >= 100 ? "bg-emerald-400" : pct >= 60 ? "bg-blue-400" : "bg-amber-400"}`}
+                      />
+                    </div>
                   </div>
                 );
               })}
@@ -130,18 +286,55 @@ export default function DashboardView({ name, username, role }: { name: string; 
             <Card className="p-6" hover={false}>
               <h2 className="mb-4 text-lg font-semibold text-white">Semana</h2>
               <div className="grid grid-cols-7 gap-1.5">
-                {DIAS.map((d, i) => <div key={d} className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] ${i === todayIdx ? "bg-white/10 text-white" : "text-[var(--faint)]"}`}><span>{d}</span><span className={`h-1.5 w-1.5 rounded-full ${i <= todayIdx ? "bg-nude" : "bg-white/15"}`} /></div>)}
+                {DIAS.map((d, i) => (
+                  <div
+                    key={d}
+                    className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] transition ${
+                      i === todayIdx
+                        ? "border border-nude/30 bg-nude/15 font-semibold text-nude shadow-[0_0_22px_-6px_rgba(214,171,153,0.8)]"
+                        : "text-[var(--faint)]"
+                    }`}
+                  >
+                    <span>{d}</span>
+                    <span className={`h-1.5 w-1.5 rounded-full ${i === todayIdx ? "glow-pulse bg-nude" : i < todayIdx ? "bg-nude/70" : "bg-white/15"}`} />
+                  </div>
+                ))}
               </div>
             </Card>
           </Reveal>
+
           <Reveal delay={0.2}>
-            <Card className="p-6" hover={false}>
-              <div className="mb-4 flex items-center gap-2"><CalendarDays className="h-4 w-4 text-nude" /><h2 className="text-lg font-semibold text-white">Próximas fechas</h2></div>
-              <ul className="space-y-3">
-                {SPECIAL_DATES.slice(0, 3).map((s) => (
-                  <li key={s.date} className="flex items-center gap-3"><span className="text-xl">{s.emoji}</span><div className="min-w-0"><p className="truncate text-sm text-white">{s.label}</p><p className="text-[11px] text-[var(--faint)]">{new Date(s.date + "T00:00:00").toLocaleDateString("es-PY", { day: "numeric", month: "long" })}{s.kind === "festivo" ? " · Feriado" : " · Marketing"}</p></div></li>
-                ))}
-              </ul>
+            <Card className="card-sheen p-6" hover={false}>
+              <div className="mb-4 flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-nude" />
+                <h2 className="text-lg font-semibold text-white">Próximas fechas</h2>
+              </div>
+              {upcoming.length ? (
+                <ul className="space-y-3.5">
+                  {upcoming.map((s, i) => {
+                    const days = daysUntil(s.when);
+                    return (
+                      <li key={s.date} style={{ animationDelay: `${i * 50}ms` }} className="animate-fade-up flex items-center gap-3">
+                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-nude/10 text-lg ${i === 0 ? "glow-pulse" : ""}`}>
+                          {s.emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-white">{s.label}</p>
+                          <p className="text-[11px] text-[var(--faint)]">
+                            {s.when.toLocaleDateString("es-PY", { day: "numeric", month: "long" })}
+                            {s.kind === "festivo" ? " · Feriado" : " · Marketing"}
+                          </p>
+                        </div>
+                        <span className={`num shrink-0 text-[11px] font-medium ${i === 0 ? "glow-text" : "text-[var(--muted)]"}`}>
+                          {countdownLabel(days)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <EmptyState icon="🗓️" title="Sin fechas próximas" hint="No hay fechas especiales en el horizonte." />
+              )}
             </Card>
           </Reveal>
         </div>

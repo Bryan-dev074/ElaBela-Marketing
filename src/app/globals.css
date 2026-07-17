@@ -147,10 +147,23 @@
   .cursor-ring[data-visible="1"] { opacity: 1; }
   .cursor-ring[data-hover="1"] {
     width: 54px; height: 54px; margin: -27px 0 0 -27px;
-    border-color: rgba(214, 171, 153, 0.9); background: rgba(214, 171, 153, 0.08);
+    border-color: var(--cursor-accent, rgba(214, 171, 153, 0.9));
+    background: color-mix(in srgb, var(--cursor-accent, #d6ab99) 10%, transparent);
   }
   .cursor-ring[data-down="1"] { width: 22px; height: 22px; margin: -11px 0 0 -11px; }
-  @media (pointer: coarse) { .cursor-dot, .cursor-ring { display: none !important; } }
+  /* Floating state label next to the cursor (set via data-cursor-label on hovered elements) */
+  .cursor-tag {
+    position: fixed; left: 0; top: 0; z-index: 9999; pointer-events: none;
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #fff; background: color-mix(in srgb, var(--cursor-accent, #d6ab99) 30%, rgba(8,8,10,0.85));
+    border: 1px solid color-mix(in srgb, var(--cursor-accent, #d6ab99) 55%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    opacity: 0; scale: 0.85; transform-origin: left top;
+    transition: opacity 0.16s cubic-bezier(0.16,1,0.3,1), scale 0.16s cubic-bezier(0.16,1,0.3,1);
+  }
+  .cursor-tag[data-visible="1"] { opacity: 1; scale: 1; }
+  @media (pointer: coarse) { .cursor-dot, .cursor-ring, .cursor-tag { display: none !important; } }
 
   /* ---- Markdown prose ---- */
   .md { color: var(--text); font-size: 0.9rem; line-height: 1.7; }
@@ -172,6 +185,110 @@
   .md table { width: 100%; border-collapse: collapse; margin: 0.8em 0; font-size: 0.85rem; }
   .md th, .md td { border: 1px solid var(--border); padding: 0.5em 0.7em; text-align: left; }
   .md th { background: rgba(255,255,255,0.04); color: #fff; }
+}
+
+@layer components {
+  /* ================= Brand "Glow" motion system ================= */
+
+  /* Constant living shimmer for anything in the ElaBela nude — small labels,
+     @mentions, accent words. The brand color never sits still. */
+  .glow-text {
+    background: linear-gradient(100deg, #b98a76 0%, #d6ab99 30%, #ffe4d3 50%, #d6ab99 70%, #b98a76 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: glow-sweep 4.5s linear infinite;
+  }
+  @keyframes glow-sweep { 0% { background-position: 180% 0; } 100% { background-position: -180% 0; } }
+
+  /* Soft breathing dot / badge in brand color */
+  .glow-pulse { animation: glow-breathe 2.6s ease-in-out infinite; }
+  @keyframes glow-breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(214,171,153,0.5), 0 0 14px -2px rgba(214,171,153,0.45); }
+    50% { box-shadow: 0 0 0 5px rgba(214,171,153,0), 0 0 22px 2px rgba(214,171,153,0.7); }
+  }
+
+  /* Light sweep across a card on hover — premium sheen */
+  .card-sheen { position: relative; overflow: hidden; }
+  .card-sheen::after {
+    content: ""; position: absolute; top: -120%; left: -40%; width: 40%; height: 340%;
+    transform: rotate(22deg) translateX(-260%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.055), transparent);
+    pointer-events: none; transition: transform 0.85s cubic-bezier(0.16,1,0.3,1);
+  }
+  .card-sheen:hover::after { transform: rotate(22deg) translateX(460%); }
+
+  /* Breathing nude border highlight for featured surfaces (constant but cheap:
+     opacity-only animation — compositor-friendly, no per-frame repaint). */
+  .ring-glow { position: relative; }
+  .ring-glow::before {
+    content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px;
+    background: conic-gradient(from 210deg,
+      rgba(214,171,153,0.12) 0deg, rgba(214,171,153,0.65) 80deg, rgba(214,171,153,0.12) 160deg,
+      rgba(214,171,153,0.45) 265deg, rgba(214,171,153,0.12) 360deg);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: ring-breathe 3.4s ease-in-out infinite; pointer-events: none;
+  }
+  @keyframes ring-breathe { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  /* Animated underline that draws itself under nude links on hover */
+  .glow-link { position: relative; }
+  .glow-link::after {
+    content: ""; position: absolute; left: 0; bottom: -2px; height: 1px; width: 100%;
+    background: linear-gradient(90deg, #d6ab99, #ffe4d3);
+    transform: scaleX(0); transform-origin: left; transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
+  }
+  .glow-link:hover::after { transform: scaleX(1); }
+
+  /* ================= Kanban drag & drop ================= */
+  .kanban-col { transition: background 0.2s, border-color 0.2s, box-shadow 0.2s; }
+  .kanban-col.drag-over {
+    background: rgba(214,171,153,0.06);
+    border-color: rgba(214,171,153,0.5) !important;
+    box-shadow: inset 0 0 0 1px rgba(214,171,153,0.25), 0 0 30px -12px rgba(214,171,153,0.5);
+  }
+  .kanban-card { cursor: grab; }
+  .kanban-card:active { cursor: grabbing; }
+  .kanban-card.dragging { opacity: 0.35; scale: 0.97; }
+
+  /* ================= Misc premium utilities ================= */
+  .press { transition: transform 0.12s; }
+  .press:active { transform: scale(0.97); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Popover panel shared by IconPicker / TimePicker */
+  .popover-panel {
+    background: rgba(18, 18, 22, 0.96);
+    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,0.9), inset 0 1px 0 0 rgba(255,255,255,0.05);
+  }
+
+  /* Hide scrollbar but keep scrollability (time wheels, emoji grid) */
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
+
+@layer components {
+  /* ================= Markdown — guion-grade styling ================= */
+  .md h2 {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.35em;
+  }
+  .md blockquote {
+    border-left: 2px solid rgba(214,171,153,0.7);
+    background: rgba(214,171,153,0.06);
+    border-radius: 0 10px 10px 0;
+    padding: 0.6em 1em;
+    margin: 0.8em 0;
+    color: var(--text);
+  }
+  .md blockquote p { color: #f1e4dc; }
+  .md table { overflow: hidden; border-radius: 10px; border: 1px solid var(--border); }
+  .md th { background: rgba(214,171,153,0.1); color: #ffe4d3; font-weight: 600; border: none; border-bottom: 1px solid var(--border); }
+  .md td { border: none; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .md tr:last-child td { border-bottom: none; }
+  .md tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
 }
 
 @media (prefers-reduced-motion: reduce) {

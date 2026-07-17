@@ -96,17 +96,17 @@ export function StatCard({
 
 /* ---------------- Status ---------------- */
 
-const STATE_META: Record<TaskState, { label: string; pill: string; dot: string; bg: string }> = {
-  todo: { label: "Sin empezar", pill: "text-zinc-300 border-white/10 bg-white/5", dot: "bg-zinc-400", bg: "state-todo" },
-  doing: { label: "En curso", pill: "text-blue-300 border-blue-400/40 bg-blue-500/15", dot: "bg-blue-400", bg: "state-doing" },
-  done: { label: "Listo", pill: "text-emerald-300 border-emerald-400/40 bg-emerald-500/15", dot: "bg-emerald-400", bg: "state-done" },
+const STATE_META: Record<TaskState, { label: string; pill: string; dot: string; bg: string; color: string }> = {
+  todo: { label: "Sin empezar", pill: "text-zinc-300 border-white/10 bg-white/5", dot: "bg-zinc-400", bg: "state-todo", color: "#a1a1aa" },
+  doing: { label: "En curso", pill: "text-blue-300 border-blue-400/40 bg-blue-500/15", dot: "bg-blue-400", bg: "state-doing", color: "#3b82f6" },
+  done: { label: "Listo", pill: "text-emerald-300 border-emerald-400/40 bg-emerald-500/15", dot: "bg-emerald-400", bg: "state-done", color: "#22c55e" },
 };
 
-export function StatePill({ state }: { state: TaskState }) {
+export function StatePill({ state, pulse = false }: { state: TaskState; pulse?: boolean }) {
   const m = STATE_META[state];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${m.pill}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${m.dot} ${pulse && state === "doing" ? "animate-pulse" : ""}`} />
       {m.label}
     </span>
   );
@@ -114,6 +114,174 @@ export function StatePill({ state }: { state: TaskState }) {
 
 export function taskStateClass(state: TaskState) {
   return STATE_META[state].bg;
+}
+
+export function stateLabel(state: TaskState) {
+  return STATE_META[state].label;
+}
+
+/** Spread onto an element so the custom cursor tints + labels itself with the state. */
+export function stateCursorProps(state: TaskState): Record<string, string> {
+  const m = STATE_META[state];
+  return { "data-cursor-color": m.color, "data-cursor-label": m.label };
+}
+
+/** Three-pill selector to set a TaskState by hand (proyectos, guiones, modals). */
+export function StateSelector({ value, onChange, size = "md" }: { value: TaskState; onChange: (s: TaskState) => void; size?: "sm" | "md" }) {
+  const pad = size === "sm" ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs";
+  return (
+    <div className="inline-flex flex-wrap gap-1.5">
+      {(Object.keys(STATE_META) as TaskState[]).map((s) => {
+        const m = STATE_META[s];
+        const active = value === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChange(s)}
+            {...stateCursorProps(s)}
+            className={`press inline-flex items-center gap-1.5 rounded-full border font-medium transition ${pad} ${
+              active ? m.pill + " shadow-[0_0_18px_-6px_currentColor]" : "border-white/10 text-[var(--faint)] hover:border-white/25 hover:text-white"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${active ? m.dot : "bg-white/25"}`} />
+            {m.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------------- Segmented control ---------------- */
+
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  className = "",
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: React.ReactNode; badge?: React.ReactNode }[];
+  className?: string;
+}) {
+  return (
+    <div className={`inline-flex rounded-xl border border-white/10 bg-white/5 p-1 ${className}`}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`press flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            value === o.value ? "bg-white text-black shadow-[0_4px_18px_-6px_rgba(255,255,255,0.4)]" : "text-[var(--muted)] hover:text-white"
+          }`}
+        >
+          {o.label}
+          {o.badge !== undefined && <span className="opacity-60">{o.badge}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------- Weekday picker (Lun…Dom) ---------------- */
+
+const WD = ["L", "M", "M", "J", "V", "S", "D"];
+const WD_FULL = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+
+/** Chips to pick weekdays (0 = Lunes … 6 = Domingo). Empty selection = every day. */
+export function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (days: number[]) => void }) {
+  const toggle = (d: number) => onChange(value.includes(d) ? value.filter((x) => x !== d) : [...value, d].sort((a, b) => a - b));
+  const all = value.length === 0 || value.length === 7;
+  return (
+    <div>
+      <div className="flex gap-1.5">
+        {WD.map((l, d) => {
+          const on = value.includes(d);
+          return (
+            <button
+              key={d}
+              type="button"
+              title={WD_FULL[d]}
+              onClick={() => toggle(d)}
+              data-cursor-label={WD_FULL[d]}
+              className={`press flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold transition ${
+                on ? "border-nude/60 bg-nude/20 text-nude shadow-[0_0_14px_-4px_rgba(214,171,153,0.6)]" : "border-white/10 text-[var(--faint)] hover:border-white/30 hover:text-white"
+              }`}
+            >
+              {l}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px] text-[var(--faint)]">
+        {all ? "Todos los días" : value.map((d) => WD_FULL[d]).join(" · ")}
+      </p>
+    </div>
+  );
+}
+
+/* ---------------- Icon glyph (emoji o imagen/GIF) ---------------- */
+
+/**
+ * Renders a task/resource icon: an emoji string, or an uploaded image/GIF
+ * (any value starting with "data:" or "http"). GIFs animate inline.
+ */
+export function IconGlyph({
+  icon,
+  size = 20,
+  className = "",
+  rounded = "rounded-lg",
+}: {
+  icon: string;
+  size?: number;
+  className?: string;
+  rounded?: string;
+}) {
+  if (icon && (icon.startsWith("data:") || icon.startsWith("http"))) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={icon}
+        alt=""
+        width={size}
+        height={size}
+        className={`inline-block shrink-0 object-cover ${rounded} ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <span className={`inline-flex shrink-0 items-center justify-center leading-none ${className}`} style={{ fontSize: Math.round(size * 0.82) }}>
+      {icon || "✨"}
+    </span>
+  );
+}
+
+/* ---------------- Empty state ---------------- */
+
+export function EmptyState({
+  icon,
+  title,
+  hint,
+  action,
+  className = "",
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 px-6 py-12 text-center ${className}`}>
+      {icon && <div className="glow-pulse mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-nude/10 text-xl text-nude">{icon}</div>}
+      <p className="text-sm font-medium text-white">{title}</p>
+      {hint && <p className="mt-1 max-w-xs text-xs text-[var(--muted)]">{hint}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
 }
 
 /* ---------------- Buttons ---------------- */
@@ -191,7 +359,9 @@ export function Modal({
 }) {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // defaultPrevented: a popover inside the modal (IconPicker/TimePicker) already
+    // consumed this Escape to close itself — don't also close the modal.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);

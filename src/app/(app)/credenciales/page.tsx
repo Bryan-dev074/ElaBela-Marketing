@@ -5,5 +5,5 @@ import CredencialesView from "@/components/views/CredencialesView";
 
 export default function CredencialesPage() {
   const u = useUser();
-  return <CredencialesView role={u.role} />;
+  return <CredencialesView role={u.role} ownerId={u.id} />;
 }

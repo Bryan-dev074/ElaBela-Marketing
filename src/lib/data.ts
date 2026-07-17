@@ -14,7 +14,48 @@ export interface DailyTask {
   note?: string;
   /** If present with 2+ users, the task rotates among them day by day; otherwise it's fixed to `assignee`. */
   rotation?: string[];
+  /** Days of the week the task applies to (0 = Lunes … 6 = Domingo). Empty/absent = every day. */
+  days?: number[];
 }
+
+/** Weekday labels, Monday-first (matches the `days` indices of DailyTask). */
+export const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] as const;
+
+/** Today's Monday-first weekday index (0 = Lunes … 6 = Domingo). */
+export const todayWeekday = () => (new Date().getDay() + 6) % 7;
+
+/** Whether a daily task is scheduled for today (no `days` = every day). */
+export const taskAppliesToday = (t: DailyTask) => !t.days || t.days.length === 0 || t.days.includes(todayWeekday());
+
+/** Day of the year (1 = 1 de enero), via UTC so the rotation is deterministic. */
+export const dayOfYear = (d = new Date()) =>
+  Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 1)) / 86400000) + 1;
+
+/** Epoch fijo para la rotación (lunes 1 de enero de 2024) — determinístico entre sesiones. */
+const ROTATION_EPOCH_UTC = Date.UTC(2024, 0, 1);
+
+/**
+ * Who the task belongs to TODAY. Rotating tasks advance one member per each
+ * day the task APPLIES (its `days` selection): a Lun·Mié·Vie task hands off
+ * only on those days. Tasks without `days` rotate every day; fixed tasks
+ * return their `assignee`.
+ */
+export const taskAssigneeToday = (t: DailyTask, date = new Date()) => {
+  if (!t.rotation || t.rotation.length < 2) return t.assignee;
+  const diff = Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - ROTATION_EPOCH_UTC) / 86400000);
+  if (!t.days || t.days.length === 0 || t.days.length === 7) return t.rotation[((diff % t.rotation.length) + t.rotation.length) % t.rotation.length];
+  // Cantidad de días aplicables transcurridos ANTES de hoy (el epoch es lunes,
+  // así que weekday(offset) === offset % 7 con índice lunes-primero).
+  const fullWeeks = Math.floor(diff / 7);
+  const rem = diff % 7;
+  let count = fullWeeks * t.days.length;
+  for (const d of t.days) if (d < rem) count++;
+  return t.rotation[count % t.rotation.length];
+};
+
+/** Fecha corta es-PY («16 jul.») desde una fecha ISO yyyy-mm-dd. */
+export const fmtShortDate = (d?: string) =>
+  d ? new Date(d + "T00:00:00").toLocaleDateString("es-PY", { day: "numeric", month: "short" }) : null;
 
 /** Daily recurring tasks — from the "Tareas Diarias" group. */
 export const DAILY_TASKS: DailyTask[] = [
