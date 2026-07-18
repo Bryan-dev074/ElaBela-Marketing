@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DAILY_TASKS, PROJECTS, GUIONES, CLIENTS, PRODUCTS, POST_TYPES, STORY_CONFIG, TOOL_CATEGORIES,
-  type DailyTask, type Project, type Guion, type Client, type Product, type PostType, type StoryPlatform,
+  type DailyTask, type Project, type Guion, type Client, type Product, type PostType, type StoryPlatform, type WeeklyTask,
 } from "@/lib/data";
 
 const supabase = createClient();
@@ -82,8 +82,18 @@ export const useDailyTasks = () =>
     table: "daily_tasks",
     seed: DAILY_TASKS,
     order: { col: "sort" },
-    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: r.assignee as string, state: r.state as DailyTask["state"], note: (r.note as string) || undefined, rotation: (r.rotation as string[]) || undefined, days: (r.days as number[]) || undefined, dayAssignees: (r.day_assignees as string[]) || undefined }),
-    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, state: t.state, note: t.note ?? null, rotation: t.rotation ?? null, days: t.days ?? null, day_assignees: t.dayAssignees ?? null }),
+    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: r.assignee as string, state: r.state as DailyTask["state"], note: (r.note as string) || undefined, rotation: (r.rotation as string[]) || undefined, days: (r.days as number[]) || undefined, dayAssignees: (r.day_assignees as string[]) || undefined, postType: (r.post_type as string) || undefined }),
+    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, state: t.state, note: t.note ?? null, rotation: t.rotation ?? null, days: t.days ?? null, day_assignees: t.dayAssignees ?? null, post_type: t.postType ?? null }),
+  });
+
+/** Tareas semanales: bolsa sin fecha que se arrastra al calendario (como proyectos chicos). */
+export const useWeeklyTasks = () =>
+  useCollection<WeeklyTask>({
+    table: "weekly_tasks",
+    seed: [],
+    order: { col: "created_at", asc: false },
+    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: (r.assignee as string) || "", date: (r.task_date as string) || undefined, state: (r.state as WeeklyTask["state"]) || "todo", postType: (r.post_type as string) || undefined, createdAt: ((r.created_at as string) || "").slice(0, 10) }),
+    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, task_date: nn(t.date), state: t.state, post_type: t.postType ?? null }),
   });
 
 export const useProjects = () =>
@@ -140,15 +150,15 @@ export const useStoryConfig = () =>
     toRow: (s) => ({ platform: s.platform, icon: s.icon, min: s.min, max: s.max, schedules: s.schedules, done: s.done, done_date: s.doneDate ?? null, assignee: s.assignee }),
   });
 
-export interface ToolItem { id: string; category: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string }
-const TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i) => ({ id: `${c.id}-${i}`, category: c.id, kind: c.kind, title: it.label, note: it.note ?? "", href: it.href ?? "", image: "", icon: "" })));
+export interface ToolItem { id: string; category: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string; steps: string }
+const TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i) => ({ id: `${c.id}-${i}`, category: c.id, kind: c.kind, title: it.label, note: it.note ?? "", href: it.href ?? "", image: "", icon: "", steps: "" })));
 export const useToolItems = () =>
   useCollection<ToolItem>({
     table: "tool_items",
     seed: TOOL_SEED,
     order: { col: "created_at" },
-    fromRow: (r) => ({ id: r.id as string, category: r.category as string, kind: (r.kind as "prompt" | "link") || "link", title: r.title as string, note: (r.note as string) || "", href: (r.href as string) || "", image: (r.image as string) || "", icon: (r.icon as string) || "" }),
-    toRow: (t) => ({ id: t.id, category: t.category, kind: t.kind, title: t.title, note: t.note ?? null, href: t.href ?? null, image: t.image ?? null, icon: t.icon || null }),
+    fromRow: (r) => ({ id: r.id as string, category: r.category as string, kind: (r.kind as "prompt" | "link") || "link", title: r.title as string, note: (r.note as string) || "", href: (r.href as string) || "", image: (r.image as string) || "", icon: (r.icon as string) || "", steps: (r.steps as string) || "" }),
+    toRow: (t) => ({ id: t.id, category: t.category, kind: t.kind, title: t.title, note: t.note ?? null, href: t.href ?? null, image: t.image ?? null, icon: t.icon || null, steps: t.steps || null }),
   });
 
 export interface CalEventRow { id: string; date: string; kind: "tarea" | "proyecto"; title: string; owner: string }

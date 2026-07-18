@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, Check, ChevronDown, Clock, Pencil, Pin, Plus, Repeat, Settings2, Trash2 } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Pencil, Pin, Plus, Repeat, Trash2 } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -20,14 +20,13 @@ import {
   IconGlyph,
 } from "@/components/ui";
 import { IconPicker } from "@/components/IconPicker";
-import { TimeListEditor } from "@/components/TimePicker";
 import { Avatar, AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
 import {
-  WEEKDAYS, taskAppliesToday, taskAssigneeToday, taskBelongsTo, taskIsPerDay, taskMineToday,
-  storyDoneToday, todayIso, todayWeekday,
-  type DailyTask, type TaskState, type StoryPlatform,
+  WEEKDAYS, fmtShortDate, taskAppliesToday, taskAssigneeToday, taskBelongsTo, taskIsPerDay, taskMineToday,
+  todayIso, todayWeekday,
+  type DailyTask, type PostType, type TaskState, type WeeklyTask,
 } from "@/lib/data";
-import { useDailyTasks, useStoryConfig } from "@/lib/db";
+import { useDailyTasks, usePostTypes, useWeeklyTasks } from "@/lib/db";
 import { useProfiles } from "@/lib/profiles";
 import { useToday } from "@/lib/useToday";
 import type { Role } from "@/lib/brand";
@@ -44,8 +43,13 @@ type TaskDraft = {
   users: string[]; days: number[];
   /** Modo «Por día»: dueño por día de la semana (7 posiciones, "" = no se hace). */
   dayOwners: string[];
+  /** Id del tipo de post ("" = ninguno). */
+  postType: string;
 };
-const emptyTask = (): TaskDraft => ({ id: "", name: "", icon: "✨", mode: "fixed", users: ["cielo"], days: [], dayOwners: Array(7).fill("") });
+const emptyTask = (): TaskDraft => ({ id: "", name: "", icon: "✨", mode: "fixed", users: ["cielo"], days: [], dayOwners: Array(7).fill(""), postType: "" });
+
+type WeeklyDraft = { id: string; name: string; icon: string; assignee: string; postType: string };
+const emptyWeekly = (): WeeklyDraft => ({ id: "", name: "", icon: "🗓️", assignee: "cielo", postType: "" });
 
 /* ---------------- Day progress ring (header) ---------------- */
 
@@ -104,164 +108,227 @@ function ProfileChip({ username, on, onClick }: { username: string; on: boolean;
   );
 }
 
-/* ---------------- Story card (contador diario + celebración de máximo) ---------------- */
+/* ---------------- Tipo de post: chip mini + selector de chips ---------------- */
 
-const BURST_SPARKS = [
-  { e: "✨", dx: -74, dy: -46, rot: -30, sc: 1.15 },
-  { e: "💫", dx: 70, dy: -58, rot: 25, sc: 1.0 },
-  { e: "🌟", dx: -34, dy: -80, rot: -15, sc: 0.9 },
-  { e: "✨", dx: 42, dy: -86, rot: 40, sc: 1.2 },
-  { e: "✨", dx: -94, dy: 8, rot: -50, sc: 0.85 },
-  { e: "💫", dx: 96, dy: -2, rot: 35, sc: 1.05 },
-  { e: "🌟", dx: -58, dy: 54, rot: -20, sc: 0.8 },
-  { e: "✨", dx: 62, dy: 46, rot: 30, sc: 1.0 },
-  { e: "✨", dx: 6, dy: -98, rot: 10, sc: 1.25 },
-  { e: "💫", dx: -8, dy: 64, rot: -35, sc: 0.9 },
-];
-
-function StoryCard({ s, isAdmin, onCfg, onBump }: { s: StoryPlatform; isAdmin: boolean; onCfg: () => void; onBump: (d: number) => void }) {
-  const done = storyDoneToday(s);
-  const atMax = s.max > 0 && done >= s.max;
-  const ok = done >= s.min;
-  const [burst, setBurst] = useState(0);
-  const prevDone = useRef(done);
-
-  useEffect(() => {
-    if (done >= s.max && prevDone.current < s.max) setBurst((b) => b + 1);
-    prevDone.current = done;
-  }, [done, s.max]);
-
+function PostTypeChip({ pt }: { pt: PostType }) {
   return (
-    <Card className={`relative p-5 ${atMax ? "ring-glow" : "card-sheen"}`} hover={false}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{s.icon}</span>
-          <h2 className="text-sm font-semibold text-white">Historias · {s.platform}</h2>
-        </div>
-        {isAdmin && (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ background: `${pt.accent}14`, borderColor: `${pt.accent}40`, color: pt.accent }}
+      title={pt.desc}
+    >
+      <span>{pt.icon}</span> {pt.name}
+    </span>
+  );
+}
+
+function PostTypePicker({ postTypes, value, onChange }: { postTypes: PostType[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange("")}
+        className={`press flex min-h-9 items-center rounded-full border px-3.5 text-[11px] transition ${
+          value === "" ? "border-white/30 bg-white/10 font-semibold text-white" : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"
+        }`}
+      >
+        Ninguno
+      </button>
+      {postTypes.map((p) => {
+        const on = value === p.id;
+        return (
           <button
+            key={p.id}
             type="button"
-            onClick={onCfg}
-            data-cursor-label="Configurar"
-            className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
-            aria-label={`Configurar historias de ${s.platform}`}
+            onClick={() => onChange(on ? "" : p.id)}
+            data-cursor-color={p.accent}
+            data-cursor-label={p.name}
+            className={`press flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-[11px] transition ${
+              on ? "font-semibold text-white" : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"
+            }`}
+            style={on ? { borderColor: `${p.accent}80`, background: `${p.accent}1f`, boxShadow: `0 0 16px -6px ${p.accent}` } : undefined}
           >
-            <Settings2 className="h-3.5 w-3.5" />
+            <span>{p.icon}</span> {p.name}
           </button>
-        )}
-      </div>
+        );
+      })}
+    </div>
+  );
+}
 
-      {/* Barra segmentada con marcador de mínimo */}
-      <div className="mb-2 mt-6 flex items-center gap-1.5">
-        {Array.from({ length: s.max }).map((_, j) => (
-          <Fragment key={j}>
-            <div
-              className={`h-2 flex-1 rounded-full transition-all duration-300 ${
-                j < done
-                  ? atMax
-                    ? "glow-pulse bg-nude shadow-[0_0_14px_rgba(214,171,153,0.9)]"
-                    : "bg-nude shadow-[0_0_10px_rgba(214,171,153,0.55)]"
-                  : "bg-white/10"
-              }`}
-            />
-            {j + 1 === s.min && s.min < s.max && (
-              <span className="relative -mx-0.5 h-4 w-0.5 shrink-0 rounded-full bg-nude/50">
-                <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wider text-nude">
-                  mín
-                </span>
-              </span>
-            )}
-          </Fragment>
-        ))}
-      </div>
+/* ---------------- Weekly task row (columna derecha) ---------------- */
 
-      <div className="mb-3 flex items-baseline justify-between">
-        <motion.span
-          key={done}
-          initial={{ scale: atMax ? 1.4 : 1.15 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 420, damping: 18 }}
-          className={`num inline-block font-display text-2xl font-semibold ${atMax ? "glow-text" : "text-white"}`}
+function WeeklyRow({
+  w, i, pt, isAdmin, onCycle, onEdit, onRemove,
+}: {
+  w: WeeklyTask; i: number; pt?: PostType; isAdmin: boolean; onCycle: () => void; onEdit: () => void; onRemove: () => void;
+}) {
+  const [armDelete, setArmDelete] = useState(false);
+  const done = w.state === "done";
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6, transition: { duration: 0.14 } }}
+      transition={{ duration: 0.28, ease: EASE, delay: i * 0.03 }}
+      onMouseLeave={() => setArmDelete(false)}
+      {...stateCursorProps(w.state)}
+      className={`group rounded-xl border px-3.5 py-3 transition-colors duration-150 ${taskStateClass(w.state)}`}
+    >
+      <div className="flex items-center gap-2.5">
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base transition-colors ${
+            done ? "bg-emerald-500/15 shadow-[0_0_16px_-5px_rgba(52,211,153,0.5)]" : "bg-black/25"
+          }`}
         >
-          {done}
-          <span className={`text-sm ${atMax ? "" : "text-[var(--faint)]"}`}>/{s.max}</span>
-        </motion.span>
-        {atMax ? (
-          <span className="glow-text text-[11px] font-bold">¡Máximo alcanzado! 🎉</span>
+          <IconGlyph icon={w.icon} size={isImgIcon(w.icon) ? 36 : 20} rounded="rounded-xl" />
+        </span>
+        <p className={`min-w-0 flex-1 truncate text-sm transition-colors ${done ? "text-[var(--muted)] line-through" : "text-white"}`}>{w.name}</p>
+        <button type="button" onClick={onCycle} className="press shrink-0" data-cursor-label="Cambiar estado" aria-label={`Cambiar estado de ${w.name}`}>
+          <StatePill state={w.state} pulse />
+        </button>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[46px] text-[11px] text-[var(--faint)]">
+        <AvatarChip username={w.assignee} size={16} />
+        {w.date ? (
+          <span className="num inline-flex items-center gap-1 rounded-full border border-nude/40 bg-nude/10 px-1.5 py-0.5 text-[10px] font-semibold text-nude">
+            <CalendarDays className="h-3 w-3" /> {fmtShortDate(w.date)}
+          </span>
         ) : (
-          <span className={`text-[11px] font-medium ${ok ? "text-emerald-300" : "text-amber-300"}`}>
-            {ok ? "Mínimo cumplido ✓" : `Faltan ${s.min - done} para el mínimo`}
+          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-[var(--faint)] opacity-60">
+            <CalendarDays className="h-3 w-3" /> sin agendar
+          </span>
+        )}
+        {pt && <PostTypeChip pt={pt} />}
+        {isAdmin && (
+          <span className="ml-auto flex items-center gap-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={onEdit}
+              data-cursor-label="Editar"
+              className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
+              aria-label={`Editar ${w.name}`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => (armDelete ? onRemove() : setArmDelete(true))}
+              data-cursor-color="#f87171"
+              data-cursor-label={armDelete ? "Confirmar" : "Eliminar"}
+              className={`press flex h-9 items-center justify-center rounded-lg border text-[10px] font-semibold transition ${
+                armDelete
+                  ? "border-red-400/60 bg-red-500/10 px-2.5 text-red-300"
+                  : "w-9 border-white/10 text-[var(--faint)] hover:border-red-400/40 hover:text-red-300"
+              }`}
+              aria-label={armDelete ? `Confirmar eliminación de ${w.name}` : `Eliminar ${w.name}`}
+            >
+              {armDelete ? "¿Seguro?" : <Trash2 className="h-3.5 w-3.5" />}
+            </button>
           </span>
         )}
       </div>
+    </motion.div>
+  );
+}
 
-      <div className="mb-3 flex gap-2">
+/* ---------------- Fila de gestión de tareas diarias (solo admin) ---------------- */
+
+function ManageRow({
+  t, pt, onEdit, onConvert, onRemove,
+}: {
+  t: DailyTask; pt?: PostType; onEdit: () => void; onConvert: () => void; onRemove: () => void;
+}) {
+  const [armConvert, setArmConvert] = useState(false);
+  const [armDelete, setArmDelete] = useState(false);
+  const perDay = taskIsPerDay(t);
+  const rotates = !perDay && !!t.rotation && t.rotation.length > 1;
+  const hasDays = !perDay && !!t.days && t.days.length > 0 && t.days.length < 7;
+  const dayOwners = perDay ? Array.from(new Set(t.dayAssignees!.filter(Boolean))) : [];
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6, transition: { duration: 0.12 } }}
+      transition={{ duration: 0.22, ease: EASE }}
+      onMouseLeave={() => {
+        setArmConvert(false);
+        setArmDelete(false);
+      }}
+      className="group flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-2.5 transition-colors hover:border-white/15"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/25 text-base">
+        <IconGlyph icon={t.icon} size={isImgIcon(t.icon) ? 36 : 20} rounded="rounded-xl" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-white">{t.name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--faint)]">
+          {perDay ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 font-semibold">
+              <CalendarDays className="h-3 w-3 text-nude" /> Por día <AvatarStack usernames={dayOwners} size={14} />
+            </span>
+          ) : rotates ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 font-semibold">
+              <Repeat className="h-3 w-3 text-nude" /> Rota <AvatarStack usernames={t.rotation!} size={14} />
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 font-semibold">
+              <Pin className="h-3 w-3" /> Fija <Avatar username={t.assignee} size={14} /> <span className="capitalize">{t.assignee}</span>
+            </span>
+          )}
+          {hasDays && <span className="num">{t.days!.map((d) => WEEKDAYS[d]).join(" · ")}</span>}
+          {pt && <PostTypeChip pt={pt} />}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
-          onClick={() => onBump(-1)}
-          disabled={done <= 0}
-          className="press flex-1 rounded-lg border border-white/10 py-1.5 text-sm text-[var(--muted)] transition hover:text-white disabled:opacity-40"
-          aria-label={`Restar una historia de ${s.platform}`}
+          onClick={onEdit}
+          data-cursor-label="Editar"
+          className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
+          aria-label={`Editar ${t.name}`}
         >
-          −
+          <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"
-          onClick={() => onBump(1)}
-          disabled={atMax}
-          className={`press flex-[2] rounded-lg py-1.5 text-sm transition ${
-            atMax ? "bg-nude/15 font-semibold text-nude" : "bg-white/10 text-white hover:bg-white/15"
-          } disabled:opacity-70`}
-          data-cursor-label={atMax ? "¡Completo!" : "+1 historia"}
+          onClick={() => (armConvert ? onConvert() : setArmConvert(true))}
+          data-cursor-color="#a78bfa"
+          data-cursor-label="Convertir en semanal"
+          className={`press flex h-9 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-semibold transition ${
+            armConvert
+              ? "border-violet-400/60 bg-violet-500/10 text-violet-300"
+              : "border-white/10 text-[var(--faint)] hover:border-violet-400/40 hover:text-violet-300"
+          }`}
+          aria-label={armConvert ? `Confirmar conversión de ${t.name} en semanal` : `Convertir ${t.name} en tarea semanal`}
+          title="Crea una tarea semanal igual y elimina esta diaria"
         >
-          {atMax ? "¡Completo por hoy! ✨" : "+ Subir"}
+          {armConvert ? "¿Convertir y borrar la diaria?" : "→ Semanal"}
+        </button>
+        <button
+          type="button"
+          onClick={() => (armDelete ? onRemove() : setArmDelete(true))}
+          data-cursor-color="#f87171"
+          data-cursor-label={armDelete ? "Confirmar" : "Eliminar"}
+          className={`press flex h-9 items-center justify-center rounded-lg border text-[10px] font-semibold transition ${
+            armDelete
+              ? "border-red-400/60 bg-red-500/10 px-2.5 text-red-300"
+              : "w-9 border-white/10 text-[var(--faint)] hover:border-red-400/40 hover:text-red-300"
+          }`}
+          aria-label={armDelete ? `Confirmar eliminación de ${t.name}` : `Eliminar ${t.name}`}
+        >
+          {armDelete ? "¿Seguro?" : <Trash2 className="h-3.5 w-3.5" />}
         </button>
       </div>
-
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--faint)]">
-        <Clock className="h-3 w-3" />
-        {s.schedules.length > 0 ? (
-          s.schedules.map((h) => (
-            <span key={h} className="num rounded-full border border-white/10 bg-white/5 px-1.5 py-px">
-              {h}
-            </span>
-          ))
-        ) : (
-          <span>Sin horarios</span>
-        )}
-        <span className="text-white/15">·</span>
-        <AvatarChip username={s.assignee} size={16} />
-      </div>
-
-      {/* Chispas al llegar al máximo (one-shot) */}
-      {burst > 0 && (
-        <span key={burst} className="max-burst" aria-hidden>
-          {BURST_SPARKS.map((sp, k) => (
-            <span
-              key={k}
-              style={
-                {
-                  "--dx": `${sp.dx}px`,
-                  "--dy": `${sp.dy}px`,
-                  "--rot": `${sp.rot}deg`,
-                  "--s": sp.sc,
-                  fontSize: 13 + (k % 3) * 3,
-                  animationDelay: `${(k % 5) * 45}ms`,
-                } as React.CSSProperties
-              }
-            >
-              {sp.e}
-            </span>
-          ))}
-        </span>
-      )}
-    </Card>
+    </motion.div>
   );
 }
 
 /* ---------------- Task rows ---------------- */
 
-function TaskRow({ t, i, isAdmin, me, onCycle, onEdit }: { t: DailyTask; i: number; isAdmin: boolean; me: string; onCycle: () => void; onEdit: () => void }) {
+function TaskRow({ t, i, pt, isAdmin, me, onCycle, onEdit }: { t: DailyTask; i: number; pt?: PostType; isAdmin: boolean; me: string; onCycle: () => void; onEdit: () => void }) {
   const perDay = taskIsPerDay(t);
   const rotates = !perDay && !!t.rotation && t.rotation.length > 1;
   const hasDays = !perDay && !!t.days && t.days.length > 0 && t.days.length < 7;
@@ -368,6 +435,12 @@ function TaskRow({ t, i, isAdmin, me, onCycle, onEdit }: { t: DailyTask; i: numb
                 <span className="num">{t.days!.map((d) => WEEKDAYS[d]).join(" · ")}</span>
               </>
             )}
+            {pt && (
+              <>
+                <span className="text-white/15">·</span>
+                <PostTypeChip pt={pt} />
+              </>
+            )}
           </span>
         </span>
       </button>
@@ -433,16 +506,21 @@ function OtherDayRow({ t, isAdmin, onEdit }: { t: DailyTask; isAdmin: boolean; o
 
 export default function TareasView({ role, username }: { role: Role; username: string }) {
   const { items: tasks, add: addTask, update: updateTask, remove: removeTask } = useDailyTasks();
-  const { items: stories, update: updateStory } = useStoryConfig();
+  const { items: weekly, add: addWeekly, update: updateWeekly, remove: removeWeekly } = useWeeklyTasks();
+  const { items: postTypes } = usePostTypes();
   const { profiles } = useProfiles();
   const [tab, setTab] = useState<"mias" | "equipo">("mias");
   const [taskDraft, setTaskDraft] = useState<TaskDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showOthers, setShowOthers] = useState(false);
-  const [cfg, setCfg] = useState<StoryPlatform | null>(null);
+  const [weeklyDraft, setWeeklyDraft] = useState<WeeklyDraft | null>(null);
+  const [confirmDeleteWeekly, setConfirmDeleteWeekly] = useState(false);
+  const [showManage, setShowManage] = useState(false);
   const isAdmin = role === "admin";
+  const postTypeById = useMemo(() => new Map(postTypes.map((p) => [p.id, p])), [postTypes]);
+  const ptOf = (id?: string) => (id ? postTypeById.get(id) : undefined);
   // Cambia de valor cuando arranca un nuevo día (aunque la app quede abierta):
-  // re-renderiza y todos los contadores diarios (historias, turnos) vuelven a 0.
+  // re-renderiza y los turnos/contadores del día se recalculan.
   const hoy = useToday();
 
   // «Mis tareas»: rotativas = de todo el grupo (cualquiera cubre); «por día» =
@@ -484,6 +562,7 @@ export default function TareasView({ role, username }: { role: Role; username: s
       users: t.rotation && t.rotation.length > 1 ? t.rotation : [t.assignee],
       days: t.days ?? [],
       dayOwners: Array.from({ length: 7 }, (_, d) => t.dayAssignees?.[d] ?? ""),
+      postType: t.postType ?? "",
     });
   };
   const closeTaskModal = () => {
@@ -499,10 +578,11 @@ export default function TareasView({ role, username }: { role: Role; username: s
     const rotation = taskDraft.mode === "rotate" && taskDraft.users.length > 1 ? taskDraft.users : undefined;
     const assignee = perDay ? dayAssignees!.find(Boolean)! : taskDraft.users[0] ?? "cielo";
     const days = !perDay && taskDraft.days.length > 0 && taskDraft.days.length < 7 ? taskDraft.days : undefined;
+    const postType = taskDraft.postType || undefined;
     if (taskDraft.id) {
-      updateTask(taskDraft.id, { name: taskDraft.name.trim(), icon: taskDraft.icon, assignee, rotation, days, dayAssignees });
+      updateTask(taskDraft.id, { name: taskDraft.name.trim(), icon: taskDraft.icon, assignee, rotation, days, dayAssignees, postType });
     } else {
-      addTask({ id: "n" + Date.now(), name: taskDraft.name.trim(), icon: taskDraft.icon || "✨", assignee, state: "todo", rotation, days, dayAssignees });
+      addTask({ id: "n" + Date.now(), name: taskDraft.name.trim(), icon: taskDraft.icon || "✨", assignee, state: "todo", rotation, days, dayAssignees, postType });
     }
     closeTaskModal();
   }
@@ -517,20 +597,61 @@ export default function TareasView({ role, username }: { role: Role; username: s
     closeTaskModal();
   }
 
-  function saveCfg() {
-    if (!cfg) return;
-    const max = Math.max(1, cfg.max);
-    const min = Math.max(0, Math.min(cfg.min, max));
-    updateStory(cfg.platform, { ...cfg, max, min, done: Math.min(storyDoneToday(cfg), max), doneDate: todayIso() });
-    setCfg(null);
+  /* ----- Tareas semanales ----- */
+
+  const openNewWeekly = () => {
+    setConfirmDeleteWeekly(false);
+    setWeeklyDraft(emptyWeekly());
+  };
+  const editWeekly = (w: WeeklyTask) => {
+    setConfirmDeleteWeekly(false);
+    setWeeklyDraft({ id: w.id, name: w.name, icon: w.icon, assignee: w.assignee, postType: w.postType ?? "" });
+  };
+  const closeWeeklyModal = () => {
+    setWeeklyDraft(null);
+    setConfirmDeleteWeekly(false);
+  };
+
+  function saveWeekly() {
+    if (!weeklyDraft || !weeklyDraft.name.trim()) return;
+    const patch = {
+      name: weeklyDraft.name.trim(),
+      icon: weeklyDraft.icon || "🗓️",
+      assignee: weeklyDraft.assignee,
+      postType: weeklyDraft.postType || undefined,
+    };
+    if (weeklyDraft.id) updateWeekly(weeklyDraft.id, patch);
+    else addWeekly({ id: "w" + Date.now(), ...patch, state: "todo", createdAt: todayIso() });
+    closeWeeklyModal();
   }
-  // El contador es DIARIO: si `doneDate` no es hoy, arranca de 0 (por eso ya no
-  // queda «mínimo cumplido» para siempre con lo de ayer).
-  const bumpStory = (platform: string, d: number) => {
-    const s = stories.find((x) => x.platform === platform);
-    if (!s) return;
-    const next = Math.max(0, Math.min(s.max, storyDoneToday(s) + d));
-    updateStory(platform, { done: next, doneDate: todayIso() });
+
+  function deleteWeekly() {
+    if (!weeklyDraft?.id) return;
+    if (!confirmDeleteWeekly) {
+      setConfirmDeleteWeekly(true);
+      return;
+    }
+    removeWeekly(weeklyDraft.id);
+    closeWeeklyModal();
+  }
+
+  const cycleWeekly = (id: string) => {
+    const w = weekly.find((x) => x.id === id);
+    if (w) updateWeekly(id, { state: NEXT[w.state] });
+  };
+
+  /** Convierte una diaria en semanal (misma tarea, responsable de hoy) y borra la diaria. */
+  const convertToWeekly = (t: DailyTask) => {
+    addWeekly({
+      id: "w" + Date.now(),
+      name: t.name,
+      icon: t.icon,
+      assignee: taskAssigneeToday(t),
+      state: "todo",
+      postType: t.postType,
+      createdAt: todayIso(),
+    });
+    removeTask(t.id);
   };
 
   return (
@@ -571,7 +692,7 @@ export default function TareasView({ role, username }: { role: Role; username: s
           <div className="space-y-2.5">
             <AnimatePresence mode="popLayout">
               {todayTasks.map((t, i) => (
-                <TaskRow key={t.id} t={t} i={i} isAdmin={isAdmin} me={username} onCycle={() => cycle(t.id)} onEdit={() => editTask(t)} />
+                <TaskRow key={t.id} t={t} i={i} pt={ptOf(t.postType)} isAdmin={isAdmin} me={username} onCycle={() => cycle(t.id)} onEdit={() => editTask(t)} />
               ))}
             </AnimatePresence>
           </div>
@@ -633,20 +754,115 @@ export default function TareasView({ role, username }: { role: Role; username: s
           )}
         </div>
 
-        {/* -------- Stories per platform -------- */}
+        {/* -------- Weekly tasks (columna derecha) -------- */}
         <div>
           <p className="eyebrow mb-3">
-            <span className="glow-text">Historias de hoy</span>
+            <span className="glow-text">Tareas semanales</span>
           </p>
-          <div className="space-y-4">
-            {stories.map((s, i) => (
-              <Reveal key={s.platform} delay={i * 0.06}>
-                <StoryCard s={s} isAdmin={isAdmin} onCfg={() => setCfg({ ...s })} onBump={(d) => bumpStory(s.platform, d)} />
-              </Reveal>
-            ))}
-          </div>
+          <Reveal>
+            <Card className="card-sheen p-5" hover={false}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Proyectos de la semana</h2>
+                  <p className="mt-1 text-[11px] leading-relaxed text-[var(--faint)]">
+                    Viven acá sin fecha fija; arrastralas a un día del calendario para agendarlas.
+                  </p>
+                </div>
+                <span className="num shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-[var(--faint)]">
+                  {weekly.length}
+                </span>
+              </div>
+
+              {weekly.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  <AnimatePresence mode="popLayout">
+                    {weekly.map((w, i) => (
+                      <WeeklyRow
+                        key={w.id}
+                        w={w}
+                        i={i}
+                        pt={ptOf(w.postType)}
+                        isAdmin={isAdmin}
+                        onCycle={() => cycleWeekly(w.id)}
+                        onEdit={() => editWeekly(w)}
+                        onRemove={() => removeWeekly(w.id)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <EmptyState
+                  icon="🗓️"
+                  title="Sin tareas semanales"
+                  hint={
+                    isAdmin
+                      ? "Creá la primera: son como proyectos chicos que después arrastrás al calendario."
+                      : "Cuando el equipo cargue tareas semanales, las vas a ver acá."
+                  }
+                  className="!py-8"
+                />
+              )}
+
+              {isAdmin && (
+                <Button variant="subtle" onClick={openNewWeekly} className="mt-4 w-full">
+                  <Plus className="h-4 w-4" /> Nueva semanal
+                </Button>
+              )}
+            </Card>
+          </Reveal>
         </div>
       </div>
+
+      {/* -------- Gestión de tareas diarias (solo admin) -------- */}
+      {isAdmin && (
+        <div className="mt-10">
+          <button
+            type="button"
+            onClick={() => setShowManage((v) => !v)}
+            aria-expanded={showManage}
+            className="flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left transition hover:opacity-90"
+            data-cursor-label={showManage ? "Colapsar" : "Expandir"}
+          >
+            <ChevronDown className={`h-4 w-4 text-[var(--faint)] transition-transform duration-200 ${showManage ? "" : "-rotate-90"}`} />
+            <span className="eyebrow">Gestión de tareas diarias</span>
+            <span className="num rounded-full border border-white/10 bg-white/5 px-1.5 py-px text-[10px] text-[var(--faint)]">{tasks.length}</span>
+            <span className="h-px flex-1 bg-white/5" />
+          </button>
+          <AnimatePresence initial={false}>
+            {showManage && (
+              <motion.div
+                key="manage"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2, ease: EASE }}
+              >
+                <p className="mb-3 mt-1 pl-6 text-[11px] text-[var(--faint)]">
+                  Todas las tareas diarias del equipo, sin filtrar por día ni pestaña. Editá, convertí en semanal o eliminá.
+                </p>
+                {tasks.length > 0 ? (
+                  <div className="space-y-2">
+                    <AnimatePresence mode="popLayout">
+                      {tasks.map((t) => (
+                        <ManageRow
+                          key={t.id}
+                          t={t}
+                          pt={ptOf(t.postType)}
+                          onEdit={() => editTask(t)}
+                          onConvert={() => convertToWeekly(t)}
+                          onRemove={() => removeTask(t.id)}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <EmptyState icon="🌸" title="No hay tareas diarias" hint="Creá la primera con «Nueva tarea»." />
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* -------- New / edit task -------- */}
       <Modal
@@ -837,43 +1053,83 @@ export default function TareasView({ role, username }: { role: Role; username: s
                 )}
               </div>
             )}
+
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+                Tipo de publicación <span className="font-normal text-[var(--faint)]">(opcional)</span>
+              </span>
+              <PostTypePicker postTypes={postTypes} value={taskDraft.postType} onChange={(postType) => setTaskDraft({ ...taskDraft, postType })} />
+            </div>
           </div>
         )}
       </Modal>
 
-      {/* -------- Story config (admin) -------- */}
+      {/* -------- New / edit weekly task -------- */}
       <Modal
-        open={!!cfg}
-        onClose={() => setCfg(null)}
-        title={cfg ? `Configurar historias · ${cfg.platform}` : ""}
-        description="Definí mínimo, máximo, horarios y quién sube hoy."
+        open={!!weeklyDraft}
+        onClose={closeWeeklyModal}
+        title={weeklyDraft?.id ? "Editar tarea semanal" : "Nueva tarea semanal"}
+        description="Un proyecto chico de la semana: elegí ícono, nombre y responsable."
         footer={
           <>
-            <Button variant="ghost" onClick={() => setCfg(null)}>
+            {weeklyDraft?.id && (
+              <Button
+                variant="ghost"
+                onClick={deleteWeekly}
+                data-cursor-color="#f87171"
+                data-cursor-label="Eliminar"
+                className={`mr-auto ${
+                  confirmDeleteWeekly
+                    ? "!border-red-400/60 bg-red-500/10 !text-red-300"
+                    : "!text-red-300/70 hover:!border-red-400/40 hover:!text-red-300"
+                }`}
+              >
+                <Trash2 className="h-4 w-4" /> {confirmDeleteWeekly ? "¿Seguro? Sí, eliminar" : "Eliminar"}
+              </Button>
+            )}
+            <Button variant="ghost" onClick={closeWeeklyModal}>
               Cancelar
             </Button>
-            <Button onClick={saveCfg}>Guardar</Button>
+            <Button onClick={saveWeekly} disabled={!weeklyDraft?.name.trim()}>
+              Guardar
+            </Button>
           </>
         }
       >
-        {cfg && (
+        {weeklyDraft && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Mínimo">
-                <Input type="number" min={0} value={cfg.min} onChange={(e) => setCfg({ ...cfg, min: Math.max(0, Number(e.target.value)) })} />
-              </Field>
-              <Field label="Máximo">
-                <Input type="number" min={1} value={cfg.max} onChange={(e) => setCfg({ ...cfg, max: Math.max(1, Number(e.target.value)) })} />
-              </Field>
+            <div className="flex items-end gap-3">
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Ícono</span>
+                <IconPicker value={weeklyDraft.icon} onChange={(icon) => setWeeklyDraft({ ...weeklyDraft, icon })} size={44} />
+              </div>
+              <div className="flex-1">
+                <Field label="Nombre">
+                  <Input
+                    value={weeklyDraft.name}
+                    onChange={(e) => setWeeklyDraft({ ...weeklyDraft, name: e.target.value })}
+                    placeholder="Ej: Sesión de fotos de la línea nueva"
+                    autoFocus
+                  />
+                </Field>
+              </div>
             </div>
+
             <div>
-              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Horarios sugeridos</span>
-              <TimeListEditor times={cfg.schedules} onChange={(t) => setCfg({ ...cfg, schedules: t })} />
+              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsable</span>
+              <OwnerPicker value={weeklyDraft.assignee} onChange={(u) => setWeeklyDraft({ ...weeklyDraft, assignee: u })} />
             </div>
+
             <div>
-              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsable de hoy</span>
-              <OwnerPicker value={cfg.assignee} onChange={(u) => setCfg({ ...cfg, assignee: u })} />
+              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+                Tipo de publicación <span className="font-normal text-[var(--faint)]">(opcional)</span>
+              </span>
+              <PostTypePicker postTypes={postTypes} value={weeklyDraft.postType} onChange={(postType) => setWeeklyDraft({ ...weeklyDraft, postType })} />
             </div>
+
+            <p className="flex items-center gap-2 rounded-lg border border-nude/20 bg-nude/[0.06] px-3 py-2 text-[11px] text-nude/90">
+              <CalendarDays className="h-3.5 w-3.5 shrink-0" /> Arrastrala a un día del calendario para agendarla.
+            </p>
           </div>
         )}
       </Modal>

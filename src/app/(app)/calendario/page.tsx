@@ -6,10 +6,11 @@ import {
   ChevronLeft, ChevronRight, Plus, Film, FolderKanban, CheckSquare, Sparkles,
   CalendarPlus, CalendarX2, Trash2, GripVertical,
 } from "lucide-react";
-import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, Reveal } from "@/components/ui";
+import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, Reveal, IconGlyph, stateCursorProps } from "@/components/ui";
 import { Avatar, OwnerPicker } from "@/components/Avatar";
-import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Project, type Guion } from "@/lib/data";
-import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
+import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Project, type Guion, type WeeklyTask, type TaskState } from "@/lib/data";
+import { useProjects, useGuiones, useCalendarEvents, usePostTypes, useWeeklyTasks, type CalEventRow } from "@/lib/db";
+import { useProfiles } from "@/lib/profiles";
 import { useToday } from "@/lib/useToday";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -20,8 +21,11 @@ const dayLabel = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("es
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Agenda de un día: todo lo que cae en esa fecha, agrupado por origen. */
-type DayAgenda = { special: SpecialDate[]; projects: Project[]; guiones: Guion[]; events: CalEventRow[] };
-const EMPTY_AGENDA: DayAgenda = { special: [], projects: [], guiones: [], events: [] };
+type DayAgenda = { special: SpecialDate[]; projects: Project[]; guiones: Guion[]; events: CalEventRow[]; weekly: WeeklyTask[] };
+const EMPTY_AGENDA: DayAgenda = { special: [], projects: [], guiones: [], events: [], weekly: [] };
+
+/** Ciclo de estado al tocar la pill: sin empezar → en curso → listo → sin empezar. */
+const NEXT_STATE: Record<TaskState, TaskState> = { todo: "doing", doing: "done", done: "todo" };
 
 const monthVariants = {
   enter: (dir: number) => ({ opacity: 0, x: dir * 42 }),
@@ -51,6 +55,8 @@ export default function CalendarioPage() {
   const { items: guiones } = useGuiones();
   const { items: events, add: addEventDb, remove: removeEventDb } = useCalendarEvents();
   const { items: postTypes } = usePostTypes();
+  const { items: weeklyTasks, update: updateWeekly, remove: removeWeekly } = useWeeklyTasks();
+  const { profiles } = useProfiles();
 
   /** Tipo sugerido del día: el catálogo rota en orden según el DÍA DEL AÑO. */
   const typeFor = (y: number, m: number, d: number) =>
@@ -66,15 +72,16 @@ export default function CalendarioPage() {
     const map = new Map<string, DayAgenda>();
     const at = (date: string) => {
       let e = map.get(date);
-      if (!e) { e = { special: [], projects: [], guiones: [], events: [] }; map.set(date, e); }
+      if (!e) { e = { special: [], projects: [], guiones: [], events: [], weekly: [] }; map.set(date, e); }
       return e;
     };
     for (const s of SPECIAL_DATES) at(s.date).special.push(s);
     for (const p of projects) if (p.due && !p.archived) at(p.due).projects.push(p);
     for (const g of guiones) if (g.publish) at(g.publish).guiones.push(g);
     for (const e of events) at(e.date).events.push(e);
+    for (const w of weeklyTasks) if (w.date) at(w.date).weekly.push(w);
     return map;
-  }, [projects, guiones, events]);
+  }, [projects, guiones, events, weeklyTasks]);
 
   const agenda = (date: string): DayAgenda => agendaByDate.get(date) ?? EMPTY_AGENDA;
 
@@ -83,6 +90,18 @@ export default function CalendarioPage() {
     () => [...activeProjects].sort((a, b) => (a.due ? 1 : 0) - (b.due ? 1 : 0) || (a.due ?? "").localeCompare(b.due ?? "")),
     [activeProjects],
   );
+  /** Tareas semanales en la bandeja: primero las sin agendar, después por fecha. */
+  const trayWeekly = useMemo(
+    () => [...weeklyTasks].sort((a, b) => (a.date ? 1 : 0) - (b.date ? 1 : 0) || (a.date ?? "").localeCompare(b.date ?? "")),
+    [weeklyTasks],
+  );
+
+  /** El Avatar del modal cicla al siguiente perfil: así se elige responsable al agendar. */
+  const cycleAssignee = (w: WeeklyTask) => {
+    if (!profiles.length) return;
+    const i = profiles.findIndex((p) => p.username.toLowerCase() === w.assignee.toLowerCase());
+    updateWeekly(w.id, { assignee: profiles[(i + 1) % profiles.length].username });
+  };
 
   const grid = useMemo(() => {
     const first = new Date(cursor.y, cursor.m, 1);
@@ -151,10 +170,15 @@ export default function CalendarioPage() {
     setPickId(null);
   }
 
+  /** Drag mixto: «p:id» agenda un proyecto (due) y «w:id» una tarea semanal (date). */
   function dropOn(date: string, e: React.DragEvent) {
     e.preventDefault();
-    const id = e.dataTransfer.getData("text/plain") || dragId;
-    if (id) updateProject(id, { due: date });
+    const raw = e.dataTransfer.getData("text/plain") || dragId;
+    if (raw) {
+      if (raw.startsWith("w:")) updateWeekly(raw.slice(2), { date });
+      else if (raw.startsWith("p:")) updateProject(raw.slice(2), { due: date });
+      else updateProject(raw, { due: date });
+    }
     setDragOver(null);
     setDragId(null);
   }
@@ -265,6 +289,7 @@ export default function CalendarioPage() {
                         <span className="flex flex-wrap gap-0.5">
                           {a.projects.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />}
                           {a.guiones.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+                          {a.weekly.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />}
                           {a.events.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-nude" />}
                         </span>
                         {t && (
@@ -302,14 +327,14 @@ export default function CalendarioPage() {
                       key={p.id}
                       draggable
                       onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", p.id);
+                        e.dataTransfer.setData("text/plain", "p:" + p.id);
                         e.dataTransfer.effectAllowed = "move";
-                        setDragId(p.id);
+                        setDragId("p:" + p.id);
                       }}
                       onDragEnd={() => { setDragId(null); setDragOver(null); }}
                       data-cursor-label="Arrastrar"
                       className={`kanban-card flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition hover:border-nude/40 hover:bg-white/[0.06] ${
-                        dragId === p.id ? "dragging" : ""
+                        dragId === "p:" + p.id ? "dragging" : ""
                       }`}
                     >
                       <GripVertical className="h-3.5 w-3.5 shrink-0 text-[var(--faint)]" />
@@ -322,6 +347,52 @@ export default function CalendarioPage() {
                       </div>
                       {p.due ? (
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
+                      ) : (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-white/25" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Tareas semanales: misma mecánica de drag, dot violeta */}
+              <div className="divider my-4" />
+              <h3 className="mb-1 text-sm font-semibold text-white">Tareas semanales</h3>
+              <p className="mb-3 text-[11px] leading-relaxed text-[var(--faint)]">
+                Arrastrá una hasta un día para <span className="text-violet-300">agendarla</span>. Las que ya tienen fecha se pueden mover igual.
+              </p>
+              {trayWeekly.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[11px] text-[var(--faint)]">
+                  No hay tareas semanales todavía.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {trayWeekly.map((w) => (
+                    <div
+                      key={w.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", "w:" + w.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragId("w:" + w.id);
+                      }}
+                      onDragEnd={() => { setDragId(null); setDragOver(null); }}
+                      data-cursor-label="Arrastrar"
+                      className={`kanban-card flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition hover:border-violet-400/40 hover:bg-white/[0.06] ${
+                        dragId === "w:" + w.id ? "dragging" : ""
+                      }`}
+                    >
+                      <GripVertical className="h-3.5 w-3.5 shrink-0 text-[var(--faint)]" />
+                      <IconGlyph icon={w.icon} size={18} rounded="rounded-md" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-white">{w.name}</p>
+                        <p className={`num text-[10px] ${w.date ? "text-violet-300" : "text-[var(--faint)]"}`}>
+                          {w.date ? `Agendada ${fmtShortDate(w.date) ?? ""}` : "Sin agendar"}
+                        </p>
+                      </div>
+                      <Avatar username={w.assignee} size={20} />
+                      {w.date ? (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
                       ) : (
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-white/25" />
                       )}
@@ -382,6 +453,7 @@ export default function CalendarioPage() {
               <ul className="space-y-1.5 text-[11px] text-[var(--faint)]">
                 <li className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-blue-400" /> Proyecto con entrega ese día</li>
                 <li className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" /> Guion que se publica</li>
+                <li className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-violet-400" /> Tarea semanal agendada</li>
                 <li className="flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-nude" /> Tarea o evento agregado a mano</li>
                 <li className="flex items-center gap-2"><span className="text-xs leading-none">🤝</span> Emoji grande = fecha especial</li>
               </ul>
@@ -443,6 +515,13 @@ export default function CalendarioPage() {
                       <span className="ml-auto shrink-0"><Avatar username={g.responsible} size={16} /></span>
                     </p>
                   ))}
+                  {a.weekly.map((w) => (
+                    <p key={w.id} className="flex items-center gap-1.5 rounded-lg bg-violet-500/15 px-2 py-1.5 text-[11px] text-violet-200">
+                      <span className="shrink-0 leading-none"><IconGlyph icon={w.icon} size={12} rounded="rounded-sm" /></span>
+                      <span className="truncate">{w.name}</span>
+                      <span className="ml-auto shrink-0"><Avatar username={w.assignee} size={16} /></span>
+                    </p>
+                  ))}
                   {a.events.map((e) => (
                     <p key={e.id} className="flex items-center gap-1.5 rounded-lg bg-nude/15 px-2 py-1.5 text-[11px] text-nude">
                       <span className="h-1 w-1 shrink-0 rounded-full bg-nude" />
@@ -450,7 +529,7 @@ export default function CalendarioPage() {
                       <span className="ml-auto shrink-0"><Avatar username={e.owner} size={16} /></span>
                     </p>
                   ))}
-                  {a.special.length + a.projects.length + a.guiones.length + a.events.length === 0 && (
+                  {a.special.length + a.projects.length + a.guiones.length + a.events.length + a.weekly.length === 0 && (
                     <p className="text-[11px] text-[var(--faint)]">Libre</p>
                   )}
                 </div>
@@ -480,7 +559,7 @@ export default function CalendarioPage() {
         {selected && (() => {
           const a = agenda(selected);
           const t = typeForIso(selected);
-          const empty = a.special.length + a.projects.length + a.guiones.length + a.events.length === 0;
+          const empty = a.special.length + a.projects.length + a.guiones.length + a.events.length + a.weekly.length === 0;
           return (
             <div className="space-y-5">
               {t && (
@@ -546,6 +625,67 @@ export default function CalendarioPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {a.weekly.length > 0 && (
+                <div>
+                  <p className="eyebrow mb-2">Tareas semanales</p>
+                  <div className="space-y-1.5">
+                    {a.weekly.map((w) => {
+                      const armed = confirmDel === w.id;
+                      return (
+                        <div key={w.id} className="flex items-center gap-2.5 rounded-xl border border-violet-400/25 bg-violet-500/10 px-3 py-2">
+                          <IconGlyph icon={w.icon} size={18} rounded="rounded-md" />
+                          <p className="min-w-0 flex-1 truncate text-sm text-white">{w.name}</p>
+                          <button
+                            type="button"
+                            onClick={() => updateWeekly(w.id, { state: NEXT_STATE[w.state] })}
+                            aria-label={`Cambiar estado de ${w.name}`}
+                            {...stateCursorProps(w.state)}
+                            className="press flex h-9 shrink-0 items-center"
+                          >
+                            <StatePill state={w.state} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => cycleAssignee(w)}
+                            aria-label={`Cambiar responsable de ${w.name}`}
+                            data-cursor-label="Cambiar responsable"
+                            className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-white/10"
+                          >
+                            <Avatar username={w.assignee} size={22} />
+                          </button>
+                          <button
+                            onClick={() => updateWeekly(w.id, { date: undefined })}
+                            aria-label={`Desagendar ${w.name}`}
+                            data-cursor-label="Desagendar"
+                            data-cursor-color="#fbbf24"
+                            className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--faint)] transition hover:bg-white/10 hover:text-amber-300"
+                          >
+                            <CalendarX2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (armed) { removeWeekly(w.id); setConfirmDel(null); }
+                              else setConfirmDel(w.id);
+                            }}
+                            aria-label={armed ? `Confirmar eliminación de ${w.name}` : `Eliminar ${w.name}`}
+                            data-cursor-color="#f87171"
+                            data-cursor-label={armed ? "Confirmar" : "Eliminar"}
+                            className={`press flex h-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition ${
+                              armed
+                                ? "border border-red-400/40 bg-red-500/20 px-2.5 text-red-300"
+                                : "w-9 text-[var(--faint)] hover:bg-red-500/15 hover:text-red-300"
+                            }`}
+                          >
+                            {armed ? "¿Seguro?" : <Trash2 className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-[var(--faint)]">Tocá la pill para cambiar el estado y el avatar para pasar el turno. Desagendar la devuelve a la bandeja; no la borra.</p>
                 </div>
               )}
 

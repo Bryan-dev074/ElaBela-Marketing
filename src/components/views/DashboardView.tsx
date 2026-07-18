@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, animate, useMotionValue } from "framer-motion";
-import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Clock, Check } from "lucide-react";
-import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, IconGlyph } from "@/components/ui";
-import { Avatar, AvatarStack } from "@/components/Avatar";
-import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, taskMineToday, todayWeekday, type TaskState } from "@/lib/data";
+import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Check } from "lucide-react";
+import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, IconGlyph, Modal, Field, Input, Button } from "@/components/ui";
+import { Avatar, AvatarStack, OwnerPicker } from "@/components/Avatar";
+import { StoryCard } from "@/components/StoryCard";
+import { TimeListEditor } from "@/components/TimePicker";
+import { SPECIAL_DATES, storyDoneToday, taskAppliesToday, taskAssigneeToday, taskMineToday, todayIso, todayWeekday, type StoryPlatform, type TaskState } from "@/lib/data";
 import { useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
+import { useProfiles } from "@/lib/profiles";
 import { useToday } from "@/lib/useToday";
 import type { Role } from "@/lib/brand";
 
@@ -74,8 +77,26 @@ export default function DashboardView({ name, username, role }: { name: string; 
   const hoy = useToday();
   const { items: tasks, update: updateTask } = useDailyTasks();
   const { items: projects } = useProjects();
-  const { items: stories } = useStoryConfig();
+  const { items: stories, update: updateStory } = useStoryConfig();
+  const { profiles } = useProfiles();
+  const [cfg, setCfg] = useState<StoryPlatform | null>(null);
   const cycle = (id: string) => { const t = tasks.find((x) => x.id === id); if (t) updateTask(id, { state: NEXT[t.state] }); };
+
+  // El contador de historias es DIARIO: si `doneDate` no es hoy, arranca de 0.
+  const bumpStory = (platform: string, d: number) => {
+    const s = stories.find((x) => x.platform === platform);
+    if (!s) return;
+    const next = Math.max(0, Math.min(s.max, storyDoneToday(s) + d));
+    updateStory(platform, { done: next, doneDate: todayIso() });
+  };
+
+  function saveCfg() {
+    if (!cfg) return;
+    const max = Math.max(1, cfg.max);
+    const min = Math.max(0, Math.min(cfg.min, max));
+    updateStory(cfg.platform, { ...cfg, max, min, done: Math.min(storyDoneToday(cfg), max), doneDate: todayIso() });
+    setCfg(null);
+  }
 
   // Solo las tareas diarias que tocan hoy (según sus días configurados).
   // Las rotativas pertenecen a TODOS los del grupo (cualquiera puede cubrirlas);
@@ -87,10 +108,9 @@ export default function DashboardView({ name, username, role }: { name: string; 
   const teamDone = team.filter((t) => t.state === "done").length;
   const teamMembers = Array.from(new Set(team.map((t) => taskAssigneeToday(t))));
   const activeProjects = projects.filter((p) => p.status === "doing" && !p.archived).length;
-  const wkDone = WEEKLY_REQS.reduce((a, r) => a + r.done, 0);
-  const wkTarget = WEEKLY_REQS.reduce((a, r) => a + r.target, 0);
-  const compliance = wkTarget ? Math.round((wkDone / wkTarget) * 100) : 0;
-  const myStories = stories.filter((s) => s.assignee === username);
+  // Cumplimiento del DÍA: tareas listas hoy sobre el total que aplica hoy.
+  const todaysDone = myDone + teamDone;
+  const dayPct = todays.length ? Math.round((todaysDone / todays.length) * 100) : 0;
   const today = new Date(hoy + "T00:00:00").toLocaleDateString("es-PY", { weekday: "long", day: "numeric", month: "long" });
   const todayIdx = todayWeekday();
 
@@ -139,20 +159,20 @@ export default function DashboardView({ name, username, role }: { name: string; 
           delay={0.15}
           label="Cumplimiento"
           icon={<TrendingUp className="h-5 w-5" />}
-          value={<><AnimatedNumber value={compliance} /><span className="text-xl text-[var(--muted)]">%</span></>}
+          value={<><AnimatedNumber value={dayPct} /><span className="text-xl text-[var(--muted)]">%</span></>}
           hint={
             <div className="mt-2.5">
               <div className="h-1 overflow-hidden rounded-full bg-white/8">
                 <div
                   className="h-full animate-shimmer rounded-full"
                   style={{
-                    width: `${Math.min(compliance, 100)}%`,
+                    width: `${Math.min(dayPct, 100)}%`,
                     background: "linear-gradient(90deg, #b98a76, #ffe4d3, #d6ab99, #b98a76)",
                     backgroundSize: "200% 100%",
                   }}
                 />
               </div>
-              <p className="num mt-1.5 text-xs text-[var(--muted)]">{wkDone}/{wkTarget} esta semana</p>
+              <p className="mt-1.5 text-xs text-[var(--muted)]">del día completado</p>
             </div>
           }
         />
@@ -246,53 +266,86 @@ export default function DashboardView({ name, username, role }: { name: string; 
         </Reveal>
       </div>
 
-      {/* Mis horarios de historias */}
-      {myStories.length > 0 && (
-        <Reveal delay={0.1} className="mb-6">
-          <Card className="p-6" hover={false}>
-            <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
-              <Clock className="glow-pulse h-5 w-5 rounded-full text-nude" /> Tus horarios de historias hoy
-            </h2>
-            <p className="mb-4 text-xs text-[var(--muted)]">Te toca subir historias en estos horarios.</p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {myStories.map((s, i) => (
-                <div key={s.platform} style={{ animationDelay: `${i * 50}ms` }} className="card-sheen animate-fade-up rounded-xl border border-white/8 bg-black/20 p-4">
-                  <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-white"><span>{s.icon}</span> {s.platform}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {s.schedules.map((h) => (
-                      <span key={h} className="num rounded-full border border-nude/30 bg-nude/10 px-2.5 py-1 text-xs text-nude">{h}</span>
-                    ))}
-                  </div>
-                  <p className="num mt-2 text-[11px] text-[var(--faint)]">Mín {s.min} · máx {s.max}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </Reveal>
+      {/* Historias de hoy — contador diario por plataforma */}
+      {stories.length > 0 && (
+        <section className="mb-6">
+          <Reveal delay={0.05}>
+            <p className="eyebrow glow-text mb-3">Historias de hoy</p>
+          </Reveal>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {stories.map((s, i) => (
+              <Reveal key={s.platform} delay={0.08 + i * 0.05}>
+                <StoryCard
+                  s={s}
+                  isAdmin={role === "admin"}
+                  onCfg={() => setCfg({ ...s })}
+                  onBump={(d) => bumpStory(s.platform, d)}
+                />
+              </Reveal>
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Reveal delay={0.1} className="lg:col-span-2">
           <Card className="card-sheen h-full p-6" hover={false}>
-            <h2 className="mb-4 text-lg font-semibold text-white">Cumplimiento semanal</h2>
-            <div className="space-y-4">
-              {WEEKLY_REQS.map((r) => {
-                const pct = Math.round((r.done / r.target) * 100);
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">El equipo hoy</h2>
+              <span className="num text-xs text-[var(--faint)]">tareas del día</span>
+            </div>
+
+            {/* Total del día, grande */}
+            <p className="font-display text-4xl font-semibold text-white">
+              <AnimatedNumber value={todaysDone} />
+              <span className="mx-1 text-2xl text-[var(--faint)]">/</span>
+              <AnimatedNumber value={todays.length} />
+              <span className="ml-2 text-sm font-normal text-[var(--muted)]">listas</span>
+            </p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/8">
+              <div
+                className="h-full animate-shimmer rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(dayPct, 100)}%`,
+                  background: "linear-gradient(90deg, #b98a76, #ffe4d3, #d6ab99, #b98a76)",
+                  backgroundSize: "200% 100%",
+                }}
+              />
+            </div>
+
+            {/* Una fila por perfil */}
+            <div className="mt-6 space-y-3.5">
+              {profiles.map((p, i) => {
+                const pTasks = todays.filter((t) => taskMineToday(t, p.username));
+                const pDone = pTasks.filter((t) => t.state === "done").length;
+                const pPct = pTasks.length ? Math.round((pDone / pTasks.length) * 100) : 0;
+                const none = pTasks.length === 0;
                 return (
-                  <div key={r.platform + r.format}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="text-white">{r.platform} · <span className="text-[var(--muted)]">{r.format}</span></span>
-                      <span className="num text-[var(--muted)]">{r.done}/{r.target} · {r.freq}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        whileInView={{ width: `${Math.min(pct, 100)}%` }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.7, ease: EASE }}
-                        className={`h-full rounded-full ${pct >= 100 ? "bg-emerald-400" : pct >= 60 ? "bg-blue-400" : "bg-amber-400"}`}
-                      />
-                    </div>
+                  <div
+                    key={p.username}
+                    style={{ animationDelay: `${i * 50}ms` }}
+                    className={`animate-fade-up flex items-center gap-3 ${none ? "opacity-45" : ""}`}
+                  >
+                    <Avatar username={p.username} size={24} ring={!none && pPct >= 100} />
+                    <span className="w-24 shrink-0 truncate text-sm capitalize text-white">{p.fullName || p.username}</span>
+                    {none ? (
+                      <span className="text-xs text-[var(--faint)]">sin tareas hoy</span>
+                    ) : (
+                      <>
+                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/8">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            whileInView={{ width: `${Math.min(pPct, 100)}%` }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.7, ease: EASE }}
+                            className={`h-full rounded-full ${pPct >= 100 ? "bg-emerald-400" : "bg-nude"}`}
+                          />
+                        </div>
+                        <span className={`num w-12 shrink-0 text-right text-xs ${pPct >= 100 ? "text-emerald-300" : "text-[var(--muted)]"}`}>
+                          {pDone}/{pTasks.length}
+                        </span>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -358,6 +411,43 @@ export default function DashboardView({ name, username, role }: { name: string; 
           </Reveal>
         </div>
       </div>
+
+      {/* -------- Config de historias (solo admin) -------- */}
+      <Modal
+        open={!!cfg}
+        onClose={() => setCfg(null)}
+        title={cfg ? `Configurar historias · ${cfg.platform}` : ""}
+        description="Definí mínimo, máximo, horarios y quién sube hoy."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCfg(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={saveCfg}>Guardar</Button>
+          </>
+        }
+      >
+        {cfg && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Mínimo">
+                <Input type="number" min={0} value={cfg.min} onChange={(e) => setCfg({ ...cfg, min: Math.max(0, Number(e.target.value)) })} />
+              </Field>
+              <Field label="Máximo">
+                <Input type="number" min={1} value={cfg.max} onChange={(e) => setCfg({ ...cfg, max: Math.max(1, Number(e.target.value)) })} />
+              </Field>
+            </div>
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Horarios sugeridos</span>
+              <TimeListEditor times={cfg.schedules} onChange={(t) => setCfg({ ...cfg, schedules: t })} />
+            </div>
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsable de hoy</span>
+              <OwnerPicker value={cfg.assignee} onChange={(u) => setCfg({ ...cfg, assignee: u })} />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

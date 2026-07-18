@@ -22,6 +22,27 @@ export interface DailyTask {
    * Mar/Jue elizabeth. Si está presente, manda sobre `days` y `rotation`.
    */
   dayAssignees?: string[];
+  /** Id del tipo de post al que se refiere la tarea (opcional; catálogo de Publicaciones). */
+  postType?: string;
+}
+
+/**
+ * Tarea SEMANAL: como un proyecto chico — vive en una bolsa sin fecha y se
+ * arrastra al calendario para agendarla un día con su responsable. Puede
+ * hacerse una vez a la semana o no hacerse. Las tareas diarias se pueden
+ * convertir en semanales.
+ */
+export interface WeeklyTask {
+  id: string;
+  name: string;
+  icon: string;
+  assignee: string;
+  /** Fecha agendada en el calendario (ausente = sin agendar). */
+  date?: string;
+  state: TaskState;
+  /** Id del tipo de post (opcional). */
+  postType?: string;
+  createdAt: string;
 }
 
 /** Whether the task uses per-day fixed owners (modo «Por día»). */

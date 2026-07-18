@@ -74,6 +74,22 @@ alter table public.daily_tasks add column if not exists rotation text[];
 alter table public.daily_tasks add column if not exists sort int default 0;
 alter table public.daily_tasks add column if not exists days int[]; -- días de la semana (0=Lun … 6=Dom); null = todos
 alter table public.daily_tasks add column if not exists day_assignees text[]; -- modo «fija por día»: dueño por día (7 posiciones, '' = no se hace)
+alter table public.daily_tasks add column if not exists post_type text; -- id del tipo de post relacionado (opcional)
+
+-- ---------- Tareas semanales (bolsa sin fecha; se arrastran al calendario) ----------
+create table if not exists public.weekly_tasks (
+  id text primary key,
+  name text not null,
+  icon text default '✨',
+  assignee text,
+  task_date date,
+  state text not null default 'todo' check (state in ('todo','doing','done')),
+  post_type text,
+  created_at timestamptz not null default now()
+);
+alter table public.weekly_tasks enable row level security;
+drop policy if exists weekly_tasks_all on public.weekly_tasks;
+create policy weekly_tasks_all on public.weekly_tasks for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 alter table public.daily_tasks enable row level security;
 drop policy if exists daily_tasks_all on public.daily_tasks;
 create policy daily_tasks_all on public.daily_tasks for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -191,6 +207,7 @@ create table if not exists public.tool_items (
   created_at timestamptz not null default now()
 );
 alter table public.tool_items add column if not exists icon text;
+alter table public.tool_items add column if not exists steps text; -- pasos para aplicar un prompt (uno por línea)
 alter table public.tool_items enable row level security;
 drop policy if exists tool_items_all on public.tool_items;
 create policy tool_items_all on public.tool_items for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

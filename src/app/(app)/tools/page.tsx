@@ -28,7 +28,7 @@ const NUDE = "#d6ab99";
 const accentOf = (cat: string) => ACCENTS[cat] ?? NUDE;
 const kindOf = (cat: string): Kind => CATS.find((c) => c.id === cat)?.kind ?? "link";
 const catMeta = (id: string) => CATS.find((c) => c.id === id) ?? { id, title: id, emoji: "✨", kind: "link" as Kind };
-const emptyItem = (category = CATS[0].id): ToolItem => ({ id: "", category, kind: kindOf(category), title: "", note: "", href: "", image: "", icon: "" });
+const emptyItem = (category = CATS[0].id): ToolItem => ({ id: "", category, kind: kindOf(category), title: "", note: "", href: "", image: "", icon: "", steps: "" });
 const isImgSrc = (v: string) => v.startsWith("data:") || v.startsWith("http");
 
 const hostOf = (href: string): string | null => {
@@ -345,6 +345,7 @@ export default function ToolsPage() {
             /* ---------- Tarjeta PROMPT — cita / terminal ---------- */
             if (item.kind === "prompt") {
               const text = item.note || item.title;
+              const steps = (item.steps || "").split("\n").map((s) => s.trim()).filter(Boolean);
               return (
                 <motion.article
                   key={item.id}
@@ -366,18 +367,6 @@ export default function ToolsPage() {
                   <h3 className="relative z-[1] mt-3 flex items-center gap-2 text-base font-semibold text-white">
                     {item.icon && <IconGlyph icon={item.icon} size={isImgSrc(item.icon) ? 26 : 18} rounded="rounded-md" />}
                     <span className="min-w-0 truncate">{item.title}</span>
-                    {item.image && (
-                      <button
-                        type="button"
-                        onClick={() => setLightbox({ src: item.image, caption: item.title })}
-                        aria-label={`Ver imagen de ${item.title}`}
-                        data-cursor-label="Ver imagen"
-                        className="press ml-auto shrink-0 overflow-hidden rounded-lg border border-white/10"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={item.image} alt="" className="h-8 w-8 object-cover" />
-                      </button>
-                    )}
                   </h3>
 
                   {/* Bloque terminal: clic en cualquier parte copia */}
@@ -399,6 +388,37 @@ export default function ToolsPage() {
                       {item.note || "Sin texto todavía — tocá Editar y pegá el prompt."}
                     </span>
                   </button>
+
+                  {/* Pasos para aplicar el prompt */}
+                  {steps.length > 0 && (
+                    <div className="relative z-[1] mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-nude">Cómo usarlo</p>
+                      <ol className="space-y-1.5">
+                        {steps.map((s, n) => (
+                          <li key={n} className="flex items-start gap-2 text-xs leading-relaxed text-[var(--muted)]">
+                            <span className="num mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-nude/30 bg-nude/10 text-[10px] font-semibold text-nude">
+                              {n + 1}
+                            </span>
+                            <span className="min-w-0">{s}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+
+                  {/* Imagen del recurso en bloque, tocable para verla en grande */}
+                  {item.image && (
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: item.image, caption: item.title })}
+                      aria-label={`Ver imagen de ${item.title}`}
+                      data-cursor-label="Ver en grande"
+                      className="press relative z-[1] mt-3 block w-full overflow-hidden rounded-xl border border-white/10"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.image} alt="" className="h-32 w-full object-cover transition duration-300 hover:brightness-110" />
+                    </button>
+                  )}
 
                   {/* Botón grande de copiar con feedback animado */}
                   <motion.button
@@ -488,6 +508,20 @@ export default function ToolsPage() {
                   <p className="pointer-events-none relative z-[1] mt-2.5 line-clamp-2 text-xs leading-relaxed text-[var(--muted)]">
                     {item.note}
                   </p>
+                )}
+
+                {/* Imagen del recurso en bloque; va por encima del <a> overlay */}
+                {item.image && (
+                  <button
+                    type="button"
+                    onClick={() => setLightbox({ src: item.image, caption: item.title })}
+                    aria-label={`Ver imagen de ${item.title}`}
+                    data-cursor-label="Ver en grande"
+                    className="press pointer-events-auto relative z-[2] mt-3 block w-full overflow-hidden rounded-xl border border-white/10"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={item.image} alt="" className="h-28 w-full object-cover transition duration-300 hover:brightness-110" />
+                  </button>
                 )}
 
                 <div className="pointer-events-none relative z-[1] mt-auto flex items-center justify-between pt-4">
@@ -615,6 +649,17 @@ export default function ToolsPage() {
                 placeholder={kindOf(editing.category) === "prompt" ? "Pegá acá el prompt completo…" : "Una línea que explique para qué sirve"}
               />
             </Field>
+            {kindOf(editing.category) === "prompt" && (
+              <Field label="Pasos para aplicarlo (opcional — uno por línea)">
+                <Textarea
+                  rows={3}
+                  value={editing.steps ?? ""}
+                  onChange={(e) => setEditing({ ...editing, steps: e.target.value })}
+                  placeholder={"Abrí ChatGPT o Gemini\nPegá el prompt y completá los [corchetes]\nRevisá el tono antes de publicar"}
+                />
+                <p className="mt-1.5 text-[11px] text-[var(--faint)]">Cada línea se muestra como un paso numerado en la tarjeta.</p>
+              </Field>
+            )}
             {kindOf(editing.category) === "link" && (
               <Field label="Link">
                 <div className="flex items-center gap-2">
