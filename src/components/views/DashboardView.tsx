@@ -8,6 +8,7 @@ import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, 
 import { Avatar, AvatarStack } from "@/components/Avatar";
 import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, taskMineToday, todayWeekday, type TaskState } from "@/lib/data";
 import { useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
+import { useToday } from "@/lib/useToday";
 import type { Role } from "@/lib/brand";
 
 const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -68,6 +69,9 @@ function Stat({
 const countdownLabel = (days: number) => (days === 0 ? "hoy" : days === 1 ? "mañana" : `en ${days} días`);
 
 export default function DashboardView({ name, username, role }: { name: string; username: string; role: Role }) {
+  // Cambia cuando arranca un nuevo día (aunque la pestaña quede abierta):
+  // re-renderiza y los filtros/turnos diarios se recalculan solos.
+  const hoy = useToday();
   const { items: tasks, update: updateTask } = useDailyTasks();
   const { items: projects } = useProjects();
   const { items: stories } = useStoryConfig();
@@ -87,7 +91,7 @@ export default function DashboardView({ name, username, role }: { name: string; 
   const wkTarget = WEEKLY_REQS.reduce((a, r) => a + r.target, 0);
   const compliance = wkTarget ? Math.round((wkDone / wkTarget) * 100) : 0;
   const myStories = stories.filter((s) => s.assignee === username);
-  const today = new Date().toLocaleDateString("es-PY", { weekday: "long", day: "numeric", month: "long" });
+  const today = new Date(hoy + "T00:00:00").toLocaleDateString("es-PY", { weekday: "long", day: "numeric", month: "long" });
   const todayIdx = todayWeekday();
 
   // Próximas fechas: solo desde hoy, ordenadas, con cuenta regresiva

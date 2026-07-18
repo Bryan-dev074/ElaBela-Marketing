@@ -29,6 +29,7 @@ import {
 } from "@/lib/data";
 import { useDailyTasks, useStoryConfig } from "@/lib/db";
 import { useProfiles } from "@/lib/profiles";
+import { useToday } from "@/lib/useToday";
 import type { Role } from "@/lib/brand";
 
 const NEXT: Record<TaskState, TaskState> = { todo: "doing", doing: "done", done: "todo" };
@@ -440,22 +441,29 @@ export default function TareasView({ role, username }: { role: Role; username: s
   const [showOthers, setShowOthers] = useState(false);
   const [cfg, setCfg] = useState<StoryPlatform | null>(null);
   const isAdmin = role === "admin";
+  // Cambia de valor cuando arranca un nuevo día (aunque la app quede abierta):
+  // re-renderiza y todos los contadores diarios (historias, turnos) vuelven a 0.
+  const hoy = useToday();
 
   // «Mis tareas»: rotativas = de todo el grupo (cualquiera cubre); «por día» =
   // hoy solo del dueño del día, y en «Otros días» ve las suyas de otros días.
   const inTab = useMemo(() => (tab === "mias" ? tasks.filter((t) => taskBelongsTo(t, username)) : tasks), [tasks, tab, username]);
   const todayTasks = useMemo(
     () => (tab === "mias" ? tasks.filter((t) => taskMineToday(t, username)) : tasks.filter(taskAppliesToday)),
-    [tasks, tab, username],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, tab, username, hoy],
   );
   const otherTasks = useMemo(
     () => inTab.filter((t) => (tab === "mias" ? !taskMineToday(t, username) : !taskAppliesToday(t))),
-    [inTab, tab, username],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inTab, tab, username, hoy],
   );
   const doneCount = todayTasks.filter((t) => t.state === "done").length;
-  const myTodayCount = useMemo(() => tasks.filter((t) => taskMineToday(t, username)).length, [tasks, username]);
-  const teamTodayCount = useMemo(() => tasks.filter(taskAppliesToday).length, [tasks]);
-  const dayName = new Date().toLocaleDateString("es-PY", { weekday: "long" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const myTodayCount = useMemo(() => tasks.filter((t) => taskMineToday(t, username)).length, [tasks, username, hoy]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const teamTodayCount = useMemo(() => tasks.filter(taskAppliesToday).length, [tasks, hoy]);
+  const dayName = new Date(hoy + "T00:00:00").toLocaleDateString("es-PY", { weekday: "long" });
 
   const cycle = (id: string) => {
     const t = tasks.find((x) => x.id === id);

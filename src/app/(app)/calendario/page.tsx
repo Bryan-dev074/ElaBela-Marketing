@@ -10,6 +10,7 @@ import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, R
 import { Avatar, OwnerPicker } from "@/components/Avatar";
 import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Project, type Guion } from "@/lib/data";
 import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
+import { useToday } from "@/lib/useToday";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -29,8 +30,10 @@ const monthVariants = {
 };
 
 export default function CalendarioPage() {
-  const now = new Date();
-  const todayIso = iso(now.getFullYear(), now.getMonth(), now.getDate());
+  // Se actualiza solo cuando arranca un nuevo día (resalta el día correcto
+  // y recalcula la rotación aunque la pestaña quede abierta).
+  const todayIso = useToday();
+  const now = new Date(todayIso + "T00:00:00");
 
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [dir, setDir] = useState(1);
@@ -104,14 +107,14 @@ export default function CalendarioPage() {
 
   /** Semana ACTUAL (siempre la de hoy) para el panel de rotación. */
   const rotationWeek = useMemo(() => {
-    const base = new Date();
+    const base = new Date(todayIso + "T00:00:00");
     base.setDate(base.getDate() - ((base.getDay() + 6) % 7));
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(base);
       d.setDate(base.getDate() + i);
       return d;
     });
-  }, []);
+  }, [todayIso]);
 
   const goMonth = (delta: 1 | -1) => {
     setDir(delta);
