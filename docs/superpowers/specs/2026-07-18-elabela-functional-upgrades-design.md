@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18
 
-**Status:** Ready for user review
+**Status:** Approved by user
 **Repository:** `Bryan-dev074/ElaBela-Marketing`
 
 ## Goal
@@ -185,7 +185,10 @@ declaration scoped to its asset ID. The preview provides:
 - letter-spacing control for visually stretching or tightening the sample;
 - short and paragraph specimens;
 - file-format and font-name metadata;
-- delete action with confirmation.
+- edit action for its display name and role/usage label;
+- replace-file action using the same validation and Storage flow;
+- delete action with confirmation, removing both the database row and the
+  uploaded Storage object when possible.
 
 If the file cannot be decoded by the browser, the card shows a clear error and
 falls back to the UI font without pretending the custom font loaded.
@@ -210,8 +213,8 @@ category appear in an explicit `Sin categoría` group.
 
 - Shared categories and their shared credentials are visible to authenticated
   team members under the existing shared rules.
-- Private categories are visible to their owner and the admin under the current
-  private-credential policy.
+- Private categories are visible only to their owner, matching the current
+  private-credential policy; this change does not add an admin override.
 - A credential cannot be placed in a category whose scope conflicts with the
   credential scope.
 
@@ -397,7 +400,8 @@ errors.
    CRUD with custom icon/GIF.
 4. Prompt/tool images appear above names, remain fully visible, and open in the
    lightbox.
-5. A real font file can be uploaded and interactively previewed.
+5. A real font file can be uploaded, edited, replaced, deleted, and
+   interactively previewed.
 6. Shared and private credentials can each be organized into editable custom
    categories.
 7. Weekly-task functionality no longer appears anywhere in the application.
