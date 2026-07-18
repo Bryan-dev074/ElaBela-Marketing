@@ -82,8 +82,8 @@ export const useDailyTasks = () =>
     table: "daily_tasks",
     seed: DAILY_TASKS,
     order: { col: "sort" },
-    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: r.assignee as string, state: r.state as DailyTask["state"], note: (r.note as string) || undefined, rotation: (r.rotation as string[]) || undefined, days: (r.days as number[]) || undefined }),
-    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, state: t.state, note: t.note ?? null, rotation: t.rotation ?? null, days: t.days ?? null }),
+    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: r.assignee as string, state: r.state as DailyTask["state"], note: (r.note as string) || undefined, rotation: (r.rotation as string[]) || undefined, days: (r.days as number[]) || undefined, dayAssignees: (r.day_assignees as string[]) || undefined }),
+    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, state: t.state, note: t.note ?? null, rotation: t.rotation ?? null, days: t.days ?? null, day_assignees: t.dayAssignees ?? null }),
   });
 
 export const useProjects = () =>
@@ -136,8 +136,8 @@ export const useStoryConfig = () =>
     table: "story_config",
     idKey: "platform",
     seed: STORY_CONFIG,
-    fromRow: (r) => ({ platform: r.platform as StoryPlatform["platform"], icon: (r.icon as string) || "📸", min: (r.min as number) ?? 1, max: (r.max as number) ?? 2, schedules: (r.schedules as string[]) || [], done: (r.done as number) ?? 0, assignee: (r.assignee as string) || "" }),
-    toRow: (s) => ({ platform: s.platform, icon: s.icon, min: s.min, max: s.max, schedules: s.schedules, done: s.done, assignee: s.assignee }),
+    fromRow: (r) => ({ platform: r.platform as StoryPlatform["platform"], icon: (r.icon as string) || "📸", min: (r.min as number) ?? 1, max: (r.max as number) ?? 2, schedules: (r.schedules as string[]) || [], done: (r.done as number) ?? 0, doneDate: (r.done_date as string) || undefined, assignee: (r.assignee as string) || "" }),
+    toRow: (s) => ({ platform: s.platform, icon: s.icon, min: s.min, max: s.max, schedules: s.schedules, done: s.done, done_date: s.doneDate ?? null, assignee: s.assignee }),
   });
 
 export interface ToolItem { id: string; category: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string }

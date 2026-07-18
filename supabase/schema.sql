@@ -73,6 +73,7 @@ create table if not exists public.daily_tasks (
 alter table public.daily_tasks add column if not exists rotation text[];
 alter table public.daily_tasks add column if not exists sort int default 0;
 alter table public.daily_tasks add column if not exists days int[]; -- días de la semana (0=Lun … 6=Dom); null = todos
+alter table public.daily_tasks add column if not exists day_assignees text[]; -- modo «fija por día»: dueño por día (7 posiciones, '' = no se hace)
 alter table public.daily_tasks enable row level security;
 drop policy if exists daily_tasks_all on public.daily_tasks;
 create policy daily_tasks_all on public.daily_tasks for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
@@ -172,6 +173,7 @@ create table if not exists public.story_config (
   done int not null default 0,
   assignee text
 );
+alter table public.story_config add column if not exists done_date date; -- a qué día corresponde `done` (reseteo diario)
 alter table public.story_config enable row level security;
 drop policy if exists story_config_all on public.story_config;
 create policy story_config_all on public.story_config for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

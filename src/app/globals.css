@@ -163,6 +163,18 @@
     opacity: 0; transition: opacity 0.4s ease; will-change: transform;
   }
 
+  /* Celebración al llegar al MÁXIMO de historias: chispas que salen del centro */
+  .max-burst { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+  .max-burst span {
+    position: absolute; left: 50%; top: 45%; line-height: 1;
+    animation: spark-fly 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  @keyframes spark-fly {
+    0% { transform: translate(-50%, -50%) scale(0.3) rotate(0deg); opacity: 0; }
+    12% { opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--s, 1.1)) rotate(var(--rot, 0deg)); opacity: 0; }
+  }
+
   /* Onda puntual al hacer click (se autodescarta al terminar) */
   .bg-ripple {
     position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px;

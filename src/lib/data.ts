@@ -16,7 +16,16 @@ export interface DailyTask {
   rotation?: string[];
   /** Days of the week the task applies to (0 = Lunes … 6 = Domingo). Empty/absent = every day. */
   days?: number[];
+  /**
+   * Modo «fija por día»: 7 posiciones (0 = Lunes … 6 = Domingo) con el username
+   * dueño de la tarea ese día ("" = ese día no se hace). Ej: Lun/Mié cielo,
+   * Mar/Jue elizabeth. Si está presente, manda sobre `days` y `rotation`.
+   */
+  dayAssignees?: string[];
 }
+
+/** Whether the task uses per-day fixed owners (modo «Por día»). */
+export const taskIsPerDay = (t: DailyTask) => !!t.dayAssignees && t.dayAssignees.some(Boolean);
 
 /** Weekday labels, Monday-first (matches the `days` indices of DailyTask). */
 export const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] as const;
@@ -25,7 +34,10 @@ export const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] as c
 export const todayWeekday = () => (new Date().getDay() + 6) % 7;
 
 /** Whether a daily task is scheduled for today (no `days` = every day). */
-export const taskAppliesToday = (t: DailyTask) => !t.days || t.days.length === 0 || t.days.includes(todayWeekday());
+export const taskAppliesToday = (t: DailyTask) => {
+  if (taskIsPerDay(t)) return !!t.dayAssignees![todayWeekday()];
+  return !t.days || t.days.length === 0 || t.days.includes(todayWeekday());
+};
 
 /** Day of the year (1 = 1 de enero), via UTC so the rotation is deterministic. */
 export const dayOfYear = (d = new Date()) =>
@@ -42,13 +54,31 @@ const ROTATION_EPOCH_UTC = Date.UTC(2024, 0, 1);
  */
 /**
  * Whether the task belongs to this member. A rotating task belongs to EVERY
- * member of the rotation (whoever is free can cover it); the daily priority
+ * member of the rotation (whoever is free can cover it); a per-day task
+ * belongs to whoever owns at least one day; the daily priority
  * («a quién le toca hoy») is `taskAssigneeToday`.
  */
-export const taskBelongsTo = (t: DailyTask, username: string) =>
-  t.rotation && t.rotation.length > 1 ? t.rotation.includes(username) : t.assignee === username;
+export const taskBelongsTo = (t: DailyTask, username: string) => {
+  if (taskIsPerDay(t)) return t.dayAssignees!.includes(username);
+  return t.rotation && t.rotation.length > 1 ? t.rotation.includes(username) : t.assignee === username;
+};
+
+/**
+ * Whether the task counts as MINE today. Rotating tasks are shared (every
+ * member sees them today, with a turn chip); per-day tasks are FIXED to the
+ * day's owner; fixed tasks require being the assignee.
+ */
+export const taskMineToday = (t: DailyTask, username: string) => {
+  if (!taskAppliesToday(t)) return false;
+  if (taskIsPerDay(t)) return t.dayAssignees![todayWeekday()] === username;
+  return taskBelongsTo(t, username);
+};
 
 export const taskAssigneeToday = (t: DailyTask, date = new Date()) => {
+  if (taskIsPerDay(t)) {
+    const wd = (date.getDay() + 6) % 7;
+    return t.dayAssignees![wd] || t.assignee;
+  }
   if (!t.rotation || t.rotation.length < 2) return t.assignee;
   const diff = Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - ROTATION_EPOCH_UTC) / 86400000);
   if (!t.days || t.days.length === 0 || t.days.length === 7) return t.rotation[((diff % t.rotation.length) + t.rotation.length) % t.rotation.length];
@@ -128,9 +158,20 @@ export interface StoryPlatform {
   min: number;
   max: number;
   schedules: string[]; // horarios sugeridos, ej. ["09:00","13:00","18:00"]
-  done: number;        // subidas hoy
+  done: number;        // subidas del día registrado en doneDate
+  /** Fecha ISO (yyyy-mm-dd) a la que corresponde `done`; si no es hoy, el contador arranca de 0. */
+  doneDate?: string;
   assignee: string;    // a quién le toca hoy
 }
+
+/** ISO de hoy (yyyy-mm-dd, hora local). */
+export const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** Historias subidas HOY (si el contador quedó de otro día, vale 0). */
+export const storyDoneToday = (s: StoryPlatform) => (s.doneDate === todayIso() ? s.done : 0);
 
 export const STORY_CONFIG: StoryPlatform[] = [
   { platform: "Instagram", icon: "📸", min: 2, max: 5, schedules: ["09:00", "13:00", "18:00"], done: 3, assignee: "cielo" },

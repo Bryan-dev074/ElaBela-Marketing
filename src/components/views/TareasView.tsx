@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronDown, Clock, Pencil, Pin, Plus, Repeat, Settings2, Trash2 } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Clock, Pencil, Pin, Plus, Repeat, Settings2, Trash2 } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -22,7 +22,11 @@ import {
 import { IconPicker } from "@/components/IconPicker";
 import { TimeListEditor } from "@/components/TimePicker";
 import { Avatar, AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
-import { WEEKDAYS, taskAppliesToday, taskAssigneeToday, taskBelongsTo, type DailyTask, type TaskState, type StoryPlatform } from "@/lib/data";
+import {
+  WEEKDAYS, taskAppliesToday, taskAssigneeToday, taskBelongsTo, taskIsPerDay, taskMineToday,
+  storyDoneToday, todayIso, todayWeekday,
+  type DailyTask, type TaskState, type StoryPlatform,
+} from "@/lib/data";
 import { useDailyTasks, useStoryConfig } from "@/lib/db";
 import { useProfiles } from "@/lib/profiles";
 import type { Role } from "@/lib/brand";
@@ -33,8 +37,14 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 /** Una imagen/GIF llena el tile; un emoji conserva su tamaño de texto anterior. */
 const isImgIcon = (icon: string) => icon.startsWith("data:") || icon.startsWith("http");
 
-type TaskDraft = { id: string; name: string; icon: string; mode: "fixed" | "rotate"; users: string[]; days: number[] };
-const emptyTask = (): TaskDraft => ({ id: "", name: "", icon: "✨", mode: "fixed", users: ["cielo"], days: [] });
+type TaskDraft = {
+  id: string; name: string; icon: string;
+  mode: "fixed" | "perday" | "rotate";
+  users: string[]; days: number[];
+  /** Modo «Por día»: dueño por día de la semana (7 posiciones, "" = no se hace). */
+  dayOwners: string[];
+};
+const emptyTask = (): TaskDraft => ({ id: "", name: "", icon: "✨", mode: "fixed", users: ["cielo"], days: [], dayOwners: Array(7).fill("") });
 
 /* ---------------- Day progress ring (header) ---------------- */
 
@@ -93,14 +103,171 @@ function ProfileChip({ username, on, onClick }: { username: string; on: boolean;
   );
 }
 
+/* ---------------- Story card (contador diario + celebración de máximo) ---------------- */
+
+const BURST_SPARKS = [
+  { e: "✨", dx: -74, dy: -46, rot: -30, sc: 1.15 },
+  { e: "💫", dx: 70, dy: -58, rot: 25, sc: 1.0 },
+  { e: "🌟", dx: -34, dy: -80, rot: -15, sc: 0.9 },
+  { e: "✨", dx: 42, dy: -86, rot: 40, sc: 1.2 },
+  { e: "✨", dx: -94, dy: 8, rot: -50, sc: 0.85 },
+  { e: "💫", dx: 96, dy: -2, rot: 35, sc: 1.05 },
+  { e: "🌟", dx: -58, dy: 54, rot: -20, sc: 0.8 },
+  { e: "✨", dx: 62, dy: 46, rot: 30, sc: 1.0 },
+  { e: "✨", dx: 6, dy: -98, rot: 10, sc: 1.25 },
+  { e: "💫", dx: -8, dy: 64, rot: -35, sc: 0.9 },
+];
+
+function StoryCard({ s, isAdmin, onCfg, onBump }: { s: StoryPlatform; isAdmin: boolean; onCfg: () => void; onBump: (d: number) => void }) {
+  const done = storyDoneToday(s);
+  const atMax = s.max > 0 && done >= s.max;
+  const ok = done >= s.min;
+  const [burst, setBurst] = useState(0);
+  const prevDone = useRef(done);
+
+  useEffect(() => {
+    if (done >= s.max && prevDone.current < s.max) setBurst((b) => b + 1);
+    prevDone.current = done;
+  }, [done, s.max]);
+
+  return (
+    <Card className={`relative p-5 ${atMax ? "ring-glow" : "card-sheen"}`} hover={false}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{s.icon}</span>
+          <h2 className="text-sm font-semibold text-white">Historias · {s.platform}</h2>
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={onCfg}
+            data-cursor-label="Configurar"
+            className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
+            aria-label={`Configurar historias de ${s.platform}`}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* Barra segmentada con marcador de mínimo */}
+      <div className="mb-2 mt-6 flex items-center gap-1.5">
+        {Array.from({ length: s.max }).map((_, j) => (
+          <Fragment key={j}>
+            <div
+              className={`h-2 flex-1 rounded-full transition-all duration-300 ${
+                j < done
+                  ? atMax
+                    ? "glow-pulse bg-nude shadow-[0_0_14px_rgba(214,171,153,0.9)]"
+                    : "bg-nude shadow-[0_0_10px_rgba(214,171,153,0.55)]"
+                  : "bg-white/10"
+              }`}
+            />
+            {j + 1 === s.min && s.min < s.max && (
+              <span className="relative -mx-0.5 h-4 w-0.5 shrink-0 rounded-full bg-nude/50">
+                <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wider text-nude">
+                  mín
+                </span>
+              </span>
+            )}
+          </Fragment>
+        ))}
+      </div>
+
+      <div className="mb-3 flex items-baseline justify-between">
+        <motion.span
+          key={done}
+          initial={{ scale: atMax ? 1.4 : 1.15 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 420, damping: 18 }}
+          className={`num inline-block font-display text-2xl font-semibold ${atMax ? "glow-text" : "text-white"}`}
+        >
+          {done}
+          <span className={`text-sm ${atMax ? "" : "text-[var(--faint)]"}`}>/{s.max}</span>
+        </motion.span>
+        {atMax ? (
+          <span className="glow-text text-[11px] font-bold">¡Máximo alcanzado! 🎉</span>
+        ) : (
+          <span className={`text-[11px] font-medium ${ok ? "text-emerald-300" : "text-amber-300"}`}>
+            {ok ? "Mínimo cumplido ✓" : `Faltan ${s.min - done} para el mínimo`}
+          </span>
+        )}
+      </div>
+
+      <div className="mb-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => onBump(-1)}
+          disabled={done <= 0}
+          className="press flex-1 rounded-lg border border-white/10 py-1.5 text-sm text-[var(--muted)] transition hover:text-white disabled:opacity-40"
+          aria-label={`Restar una historia de ${s.platform}`}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          onClick={() => onBump(1)}
+          disabled={atMax}
+          className={`press flex-[2] rounded-lg py-1.5 text-sm transition ${
+            atMax ? "bg-nude/15 font-semibold text-nude" : "bg-white/10 text-white hover:bg-white/15"
+          } disabled:opacity-70`}
+          data-cursor-label={atMax ? "¡Completo!" : "+1 historia"}
+        >
+          {atMax ? "¡Completo por hoy! ✨" : "+ Subir"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--faint)]">
+        <Clock className="h-3 w-3" />
+        {s.schedules.length > 0 ? (
+          s.schedules.map((h) => (
+            <span key={h} className="num rounded-full border border-white/10 bg-white/5 px-1.5 py-px">
+              {h}
+            </span>
+          ))
+        ) : (
+          <span>Sin horarios</span>
+        )}
+        <span className="text-white/15">·</span>
+        <AvatarChip username={s.assignee} size={16} />
+      </div>
+
+      {/* Chispas al llegar al máximo (one-shot) */}
+      {burst > 0 && (
+        <span key={burst} className="max-burst" aria-hidden>
+          {BURST_SPARKS.map((sp, k) => (
+            <span
+              key={k}
+              style={
+                {
+                  "--dx": `${sp.dx}px`,
+                  "--dy": `${sp.dy}px`,
+                  "--rot": `${sp.rot}deg`,
+                  "--s": sp.sc,
+                  fontSize: 13 + (k % 3) * 3,
+                  animationDelay: `${(k % 5) * 45}ms`,
+                } as React.CSSProperties
+              }
+            >
+              {sp.e}
+            </span>
+          ))}
+        </span>
+      )}
+    </Card>
+  );
+}
+
 /* ---------------- Task rows ---------------- */
 
 function TaskRow({ t, i, isAdmin, me, onCycle, onEdit }: { t: DailyTask; i: number; isAdmin: boolean; me: string; onCycle: () => void; onEdit: () => void }) {
-  const rotates = !!t.rotation && t.rotation.length > 1;
-  const hasDays = !!t.days && t.days.length > 0 && t.days.length < 7;
+  const perDay = taskIsPerDay(t);
+  const rotates = !perDay && !!t.rotation && t.rotation.length > 1;
+  const hasDays = !perDay && !!t.days && t.days.length > 0 && t.days.length < 7;
   const done = t.state === "done";
   const assigneeToday = taskAssigneeToday(t);
   const myTurn = assigneeToday === me;
+  const wdToday = todayWeekday();
   return (
     <motion.div
       layout
@@ -146,7 +313,33 @@ function TaskRow({ t, i, isAdmin, me, onCycle, onEdit }: { t: DailyTask; i: numb
         <span className="min-w-0">
           <span className={`block truncate text-sm transition-colors ${done ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
           <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--faint)]">
-            {rotates ? (
+            {perDay ? (
+              <>
+                <CalendarDays className="h-3 w-3 text-nude" />
+                {t.dayAssignees!.map((u, d) =>
+                  u ? (
+                    <span
+                      key={d}
+                      title={`${WEEKDAYS[d]}: ${u}`}
+                      className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                        d === wdToday
+                          ? myTurn
+                            ? "border-nude/50 bg-nude/15 text-nude shadow-[0_0_12px_-4px_rgba(214,171,153,0.7)]"
+                            : "border-white/20 bg-white/10 text-white"
+                          : "border-white/10 bg-white/5 text-[var(--muted)]"
+                      }`}
+                    >
+                      {WEEKDAYS[d]} <Avatar username={u} size={12} />
+                    </span>
+                  ) : null,
+                )}
+                {t.dayAssignees![wdToday] && (
+                  <span className={`text-[10px] font-semibold ${myTurn ? "glow-text" : "text-[var(--faint)]"}`}>
+                    {myTurn ? "· te toca hoy" : <>· hoy: <span className="capitalize">{assigneeToday}</span></>}
+                  </span>
+                )}
+              </>
+            ) : rotates ? (
               <>
                 <Repeat className="h-3 w-3 text-nude" />
                 <AvatarStack usernames={t.rotation!} size={16} />
@@ -248,12 +441,19 @@ export default function TareasView({ role, username }: { role: Role; username: s
   const [cfg, setCfg] = useState<StoryPlatform | null>(null);
   const isAdmin = role === "admin";
 
-  // «Mis tareas» incluye toda rotación donde participo (cualquiera del grupo puede cubrirla).
+  // «Mis tareas»: rotativas = de todo el grupo (cualquiera cubre); «por día» =
+  // hoy solo del dueño del día, y en «Otros días» ve las suyas de otros días.
   const inTab = useMemo(() => (tab === "mias" ? tasks.filter((t) => taskBelongsTo(t, username)) : tasks), [tasks, tab, username]);
-  const todayTasks = useMemo(() => inTab.filter(taskAppliesToday), [inTab]);
-  const otherTasks = useMemo(() => inTab.filter((t) => !taskAppliesToday(t)), [inTab]);
+  const todayTasks = useMemo(
+    () => (tab === "mias" ? tasks.filter((t) => taskMineToday(t, username)) : tasks.filter(taskAppliesToday)),
+    [tasks, tab, username],
+  );
+  const otherTasks = useMemo(
+    () => inTab.filter((t) => (tab === "mias" ? !taskMineToday(t, username) : !taskAppliesToday(t))),
+    [inTab, tab, username],
+  );
   const doneCount = todayTasks.filter((t) => t.state === "done").length;
-  const myTodayCount = useMemo(() => tasks.filter((t) => taskBelongsTo(t, username) && taskAppliesToday(t)).length, [tasks, username]);
+  const myTodayCount = useMemo(() => tasks.filter((t) => taskMineToday(t, username)).length, [tasks, username]);
   const teamTodayCount = useMemo(() => tasks.filter(taskAppliesToday).length, [tasks]);
   const dayName = new Date().toLocaleDateString("es-PY", { weekday: "long" });
 
@@ -272,9 +472,10 @@ export default function TareasView({ role, username }: { role: Role; username: s
       id: t.id,
       name: t.name,
       icon: t.icon,
-      mode: t.rotation && t.rotation.length > 1 ? "rotate" : "fixed",
+      mode: taskIsPerDay(t) ? "perday" : t.rotation && t.rotation.length > 1 ? "rotate" : "fixed",
       users: t.rotation && t.rotation.length > 1 ? t.rotation : [t.assignee],
       days: t.days ?? [],
+      dayOwners: Array.from({ length: 7 }, (_, d) => t.dayAssignees?.[d] ?? ""),
     });
   };
   const closeTaskModal = () => {
@@ -284,13 +485,16 @@ export default function TareasView({ role, username }: { role: Role; username: s
 
   function saveTask() {
     if (!taskDraft || !taskDraft.name.trim()) return;
+    const perDay = taskDraft.mode === "perday";
+    const dayAssignees = perDay && taskDraft.dayOwners.some(Boolean) ? [...taskDraft.dayOwners] : undefined;
+    if (perDay && !dayAssignees) return; // sin días asignados no hay tarea
     const rotation = taskDraft.mode === "rotate" && taskDraft.users.length > 1 ? taskDraft.users : undefined;
-    const assignee = taskDraft.users[0] ?? "cielo";
-    const days = taskDraft.days.length > 0 && taskDraft.days.length < 7 ? taskDraft.days : undefined;
+    const assignee = perDay ? dayAssignees!.find(Boolean)! : taskDraft.users[0] ?? "cielo";
+    const days = !perDay && taskDraft.days.length > 0 && taskDraft.days.length < 7 ? taskDraft.days : undefined;
     if (taskDraft.id) {
-      updateTask(taskDraft.id, { name: taskDraft.name.trim(), icon: taskDraft.icon, assignee, rotation, days });
+      updateTask(taskDraft.id, { name: taskDraft.name.trim(), icon: taskDraft.icon, assignee, rotation, days, dayAssignees });
     } else {
-      addTask({ id: "n" + Date.now(), name: taskDraft.name.trim(), icon: taskDraft.icon || "✨", assignee, state: "todo", rotation, days });
+      addTask({ id: "n" + Date.now(), name: taskDraft.name.trim(), icon: taskDraft.icon || "✨", assignee, state: "todo", rotation, days, dayAssignees });
     }
     closeTaskModal();
   }
@@ -309,12 +513,16 @@ export default function TareasView({ role, username }: { role: Role; username: s
     if (!cfg) return;
     const max = Math.max(1, cfg.max);
     const min = Math.max(0, Math.min(cfg.min, max));
-    updateStory(cfg.platform, { ...cfg, max, min, done: Math.min(cfg.done, max) });
+    updateStory(cfg.platform, { ...cfg, max, min, done: Math.min(storyDoneToday(cfg), max), doneDate: todayIso() });
     setCfg(null);
   }
+  // El contador es DIARIO: si `doneDate` no es hoy, arranca de 0 (por eso ya no
+  // queda «mínimo cumplido» para siempre con lo de ayer).
   const bumpStory = (platform: string, d: number) => {
     const s = stories.find((x) => x.platform === platform);
-    if (s) updateStory(platform, { done: Math.max(0, Math.min(s.max, s.done + d)) });
+    if (!s) return;
+    const next = Math.max(0, Math.min(s.max, storyDoneToday(s) + d));
+    updateStory(platform, { done: next, doneDate: todayIso() });
   };
 
   return (
@@ -423,98 +631,11 @@ export default function TareasView({ role, username }: { role: Role; username: s
             <span className="glow-text">Historias de hoy</span>
           </p>
           <div className="space-y-4">
-            {stories.map((s, i) => {
-              const ok = s.done >= s.min;
-              return (
-                <Reveal key={s.platform} delay={i * 0.06}>
-                  <Card className="card-sheen p-5" hover={false}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{s.icon}</span>
-                        <h2 className="text-sm font-semibold text-white">Historias · {s.platform}</h2>
-                      </div>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => setCfg({ ...s })}
-                          data-cursor-label="Configurar"
-                          className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
-                          aria-label={`Configurar historias de ${s.platform}`}
-                        >
-                          <Settings2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Segmented progress bar with glow + clear min marker */}
-                    <div className="mb-2 mt-6 flex items-center gap-1.5">
-                      {Array.from({ length: s.max }).map((_, j) => (
-                        <Fragment key={j}>
-                          <div
-                            className={`h-2 flex-1 rounded-full transition-all duration-300 ${
-                              j < s.done ? "bg-nude shadow-[0_0_10px_rgba(214,171,153,0.55)]" : "bg-white/10"
-                            }`}
-                          />
-                          {j + 1 === s.min && s.min < s.max && (
-                            <span className="relative -mx-0.5 h-4 w-0.5 shrink-0 rounded-full bg-nude/50">
-                              <span className="absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wider text-nude">
-                                mín
-                              </span>
-                            </span>
-                          )}
-                        </Fragment>
-                      ))}
-                    </div>
-
-                    <div className="mb-3 flex items-baseline justify-between">
-                      <span className="num font-display text-2xl font-semibold text-white">
-                        {s.done}
-                        <span className="text-sm text-[var(--faint)]">/{s.max}</span>
-                      </span>
-                      <span className={`text-[11px] font-medium ${ok ? "text-emerald-300" : "text-amber-300"}`}>
-                        {ok ? "Mínimo cumplido ✓" : `Faltan ${s.min - s.done}`}
-                      </span>
-                    </div>
-
-                    <div className="mb-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => bumpStory(s.platform, -1)}
-                        disabled={s.done <= 0}
-                        className="press flex-1 rounded-lg border border-white/10 py-1.5 text-sm text-[var(--muted)] transition hover:text-white disabled:opacity-40"
-                        aria-label={`Restar una historia de ${s.platform}`}
-                      >
-                        −
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => bumpStory(s.platform, 1)}
-                        disabled={s.done >= s.max}
-                        className="press flex-[2] rounded-lg bg-white/10 py-1.5 text-sm text-white transition hover:bg-white/15 disabled:opacity-40"
-                        data-cursor-label="+1 historia"
-                      >
-                        + Subir
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--faint)]">
-                      <Clock className="h-3 w-3" />
-                      {s.schedules.length > 0 ? (
-                        s.schedules.map((h) => (
-                          <span key={h} className="num rounded-full border border-white/10 bg-white/5 px-1.5 py-px">
-                            {h}
-                          </span>
-                        ))
-                      ) : (
-                        <span>Sin horarios</span>
-                      )}
-                      <span className="text-white/15">·</span>
-                      <AvatarChip username={s.assignee} size={16} />
-                    </div>
-                  </Card>
-                </Reveal>
-              );
-            })}
+            {stories.map((s, i) => (
+              <Reveal key={s.platform} delay={i * 0.06}>
+                <StoryCard s={s} isAdmin={isAdmin} onCfg={() => setCfg({ ...s })} onBump={(d) => bumpStory(s.platform, d)} />
+              </Reveal>
+            ))}
           </div>
         </div>
       </div>
@@ -570,10 +691,12 @@ export default function TareasView({ role, username }: { role: Role; username: s
               </div>
             </div>
 
-            <div>
-              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Días de la semana</span>
-              <WeekdayPicker value={taskDraft.days} onChange={(days) => setTaskDraft({ ...taskDraft, days })} />
-            </div>
+            {taskDraft.mode !== "perday" && (
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Días de la semana</span>
+                <WeekdayPicker value={taskDraft.days} onChange={(days) => setTaskDraft({ ...taskDraft, days })} />
+              </div>
+            )}
 
             <div>
               <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Asignación</span>
@@ -583,11 +706,13 @@ export default function TareasView({ role, username }: { role: Role; username: s
                   setTaskDraft(
                     mode === "fixed"
                       ? { ...taskDraft, mode, users: [taskDraft.users[0] ?? "cielo"] }
-                      : {
-                          ...taskDraft,
-                          mode,
-                          users: taskDraft.users.length > 1 ? taskDraft.users : profiles.slice(0, 2).map((p) => p.username),
-                        },
+                      : mode === "perday"
+                        ? { ...taskDraft, mode }
+                        : {
+                            ...taskDraft,
+                            mode,
+                            users: taskDraft.users.length > 1 ? taskDraft.users : profiles.slice(0, 2).map((p) => p.username),
+                          },
                   )
                 }
                 options={[
@@ -596,6 +721,14 @@ export default function TareasView({ role, username }: { role: Role; username: s
                     label: (
                       <span className="flex items-center gap-1.5">
                         <Pin className="h-3.5 w-3.5" /> Fija
+                      </span>
+                    ),
+                  },
+                  {
+                    value: "perday",
+                    label: (
+                      <span className="flex items-center gap-1.5">
+                        <CalendarDays className="h-3.5 w-3.5" /> Por día
                       </span>
                     ),
                   },
@@ -615,6 +748,55 @@ export default function TareasView({ role, username }: { role: Role; username: s
               <div>
                 <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Perfil asignado</span>
                 <OwnerPicker value={taskDraft.users[0] ?? ""} onChange={(u) => setTaskDraft({ ...taskDraft, users: [u] })} />
+              </div>
+            ) : taskDraft.mode === "perday" ? (
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">
+                  Dueño fijo por día <span className="font-normal text-[var(--faint)]">— los días sin perfil no se hacen</span>
+                </span>
+                <div className="space-y-1.5">
+                  {WEEKDAYS.map((w, d) => (
+                    <div key={d} className="flex items-center gap-2.5">
+                      <span className={`num w-9 shrink-0 text-[11px] font-bold uppercase tracking-wider ${taskDraft.dayOwners[d] ? "text-nude" : "text-[var(--faint)]"}`}>
+                        {w}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {profiles.map((p) => {
+                          const on = taskDraft.dayOwners[d] === p.username;
+                          return (
+                            <button
+                              key={p.username}
+                              type="button"
+                              data-cursor-label={on ? "Quitar" : `${w}: ${p.username}`}
+                              onClick={() => {
+                                const dayOwners = [...taskDraft.dayOwners];
+                                dayOwners[d] = on ? "" : p.username;
+                                setTaskDraft({ ...taskDraft, dayOwners });
+                              }}
+                              className={`press flex h-8 items-center gap-1.5 rounded-full border pl-1.5 pr-3 text-[11px] capitalize transition ${
+                                on
+                                  ? "border-nude/60 bg-nude/15 text-white shadow-[0_0_14px_-5px_rgba(214,171,153,0.7)]"
+                                  : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"
+                              }`}
+                            >
+                              <Avatar username={p.username} size={18} ring={on} /> {p.username}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {taskDraft.dayOwners.some(Boolean) ? (
+                  <p className="mt-2.5 text-[11px] text-[var(--faint)]">
+                    {taskDraft.dayOwners
+                      .map((u, d) => (u ? `${WEEKDAYS[d]} ${u}` : null))
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : (
+                  <p className="mt-2.5 text-[11px] text-amber-300">Asigná al menos un día para poder guardar.</p>
+                )}
               </div>
             ) : (
               <div>

@@ -6,7 +6,7 @@ import { motion, animate, useMotionValue } from "framer-motion";
 import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Clock, Check } from "lucide-react";
 import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, IconGlyph } from "@/components/ui";
 import { Avatar, AvatarStack } from "@/components/Avatar";
-import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, taskBelongsTo, todayWeekday, type TaskState } from "@/lib/data";
+import { SPECIAL_DATES, WEEKLY_REQS, taskAppliesToday, taskAssigneeToday, taskMineToday, todayWeekday, type TaskState } from "@/lib/data";
 import { useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
 import type { Role } from "@/lib/brand";
 
@@ -77,8 +77,8 @@ export default function DashboardView({ name, username, role }: { name: string; 
   // Las rotativas pertenecen a TODOS los del grupo (cualquiera puede cubrirlas);
   // el chip de turno marca a quién le toca hoy.
   const todays = tasks.filter(taskAppliesToday);
-  const mine = todays.filter((t) => taskBelongsTo(t, username));
-  const team = todays.filter((t) => !taskBelongsTo(t, username));
+  const mine = todays.filter((t) => taskMineToday(t, username));
+  const team = todays.filter((t) => !taskMineToday(t, username));
   const myDone = mine.filter((t) => t.state === "done").length;
   const teamDone = team.filter((t) => t.state === "done").length;
   const teamMembers = Array.from(new Set(team.map((t) => taskAssigneeToday(t))));
