@@ -196,6 +196,162 @@ create table if not exists public.credential_categories (
 alter table public.credential_categories enable row level security;
 alter table public.credentials add column if not exists category_id text references public.credential_categories(id) on delete set null;
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.credential_categories'::regclass
+      and conname = 'credential_categories_name_nonblank'
+  ) then
+    alter table public.credential_categories
+      add constraint credential_categories_name_nonblank check (char_length(btrim(name)) > 0);
+  end if;
+end
+$$;
+create unique index if not exists credential_categories_shared_name_ci_unique
+  on public.credential_categories (lower(btrim(name))) where scope = 'shared';
+create unique index if not exists credential_categories_private_name_ci_unique
+  on public.credential_categories (owner_id, lower(btrim(name))) where scope = 'private';
+
+create or replace function public.enforce_credential_category_compatibility()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  category public.credential_categories%rowtype;
+begin
+  if new.category_id is null then
+    return new;
+  end if;
+
+  select * into category
+  from public.credential_categories
+  where id = new.category_id
+  for key share;
+  if not found then
+    raise exception 'La categoría de credencial no existe o no es compatible.' using errcode = '23514';
+  end if;
+  if category.scope = 'shared' and new.scope = 'shared' then
+    return new;
+  end if;
+  if category.scope = 'private'
+     and new.scope = 'private'
+     and new.owner_id = category.owner_id then
+    return new;
+  end if;
+  raise exception 'La categoría de credencial no existe o no es compatible.' using errcode = '23514';
+end;
+$$;
+
+drop trigger if exists enforce_credential_category_compatibility on public.credentials;
+create trigger enforce_credential_category_compatibility
+before insert or update of category_id, scope, owner_id on public.credentials
+for each row execute function public.enforce_credential_category_compatibility();
+
+create or replace function public.enforce_category_credential_compatibility()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if exists (
+    select 1
+    from public.credentials
+    where category_id = new.id
+      and not (
+        (new.scope = 'shared' and scope = 'shared')
+        or (new.scope = 'private' and scope = 'private' and owner_id = new.owner_id)
+      )
+  ) then
+    raise exception 'La categoría tiene credenciales incompatibles.' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_category_credential_compatibility on public.credential_categories;
+create trigger enforce_category_credential_compatibility
+before update of scope, owner_id on public.credential_categories
+for each row execute function public.enforce_category_credential_compatibility();
+
+create or replace function public.delete_empty_credential_category(p_category_id text)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  category public.credential_categories%rowtype;
+begin
+  select * into category
+  from public.credential_categories
+  where id = p_category_id
+  for update;
+  if not found then
+    raise exception 'La categoría no existe.';
+  end if;
+  if exists (select 1 from public.credentials where category_id = p_category_id) then
+    raise exception 'La categoría no está vacía.';
+  end if;
+  delete from public.credential_categories where id = p_category_id;
+end;
+$$;
+
+create or replace function public.reorder_credential_categories(p_scope text, p_category_ids text[])
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  actor_id uuid;
+  requested_count integer := coalesce(cardinality(p_category_ids), 0);
+  stored_count integer;
+  matched_count integer;
+begin
+  actor_id := (select auth.uid());
+  if p_scope not in ('shared', 'private') then
+    raise exception 'El alcance de categorías no es válido.';
+  end if;
+  if p_scope = 'private' and actor_id is null then
+    raise exception 'No hay un usuario autenticado.';
+  end if;
+  lock table public.credential_categories in share row exclusive mode;
+  if requested_count = 0 then
+    raise exception 'La lista de categorías no puede estar vacía.';
+  end if;
+  if exists (
+    select 1 from unnest(p_category_ids) as requested(id)
+    group by requested.id having count(*) > 1
+  ) then
+    raise exception 'La lista de categorías contiene IDs repetidos.';
+  end if;
+
+  select count(*) into stored_count
+  from public.credential_categories
+  where scope = p_scope
+    and ((p_scope = 'shared' and owner_id is null) or (p_scope = 'private' and owner_id = actor_id));
+  select count(*) into matched_count
+  from public.credential_categories
+  where id = any(p_category_ids)
+    and scope = p_scope
+    and ((p_scope = 'shared' and owner_id is null) or (p_scope = 'private' and owner_id = actor_id));
+  if stored_count <> requested_count or matched_count <> requested_count then
+    raise exception 'La lista de categorías está desactualizada.';
+  end if;
+
+  update public.credential_categories as category
+  set sort = requested.ordinality - 1
+  from unnest(p_category_ids) with ordinality as requested(id, ordinality)
+  where category.id = requested.id
+    and category.scope = p_scope
+    and ((p_scope = 'shared' and category.owner_id is null) or (p_scope = 'private' and category.owner_id = actor_id));
+end;
+$$;
+
 create table if not exists public.daily_task_logs (
   id uuid primary key default gen_random_uuid(),
   task_id text not null,
@@ -244,6 +400,20 @@ create policy credential_categories_update on public.credential_categories for u
 drop policy if exists credential_categories_delete on public.credential_categories;
 create policy credential_categories_delete on public.credential_categories for delete to authenticated
   using (scope = 'shared' or owner_id = (select auth.uid()));
+drop policy if exists credentials_select on public.credentials;
+create policy credentials_select on public.credentials for select to authenticated
+  using (scope = 'shared' or owner_id = (select auth.uid()) or owner_id is null);
+drop policy if exists credentials_write on public.credentials;
+drop policy if exists credentials_insert on public.credentials;
+create policy credentials_insert on public.credentials for insert to authenticated
+  with check (scope = 'shared' or owner_id = (select auth.uid()) or owner_id is null);
+drop policy if exists credentials_update on public.credentials;
+create policy credentials_update on public.credentials for update to authenticated
+  using (scope = 'shared' or owner_id = (select auth.uid()) or owner_id is null)
+  with check (scope = 'shared' or owner_id = (select auth.uid()) or owner_id is null);
+drop policy if exists credentials_delete on public.credentials;
+create policy credentials_delete on public.credentials for delete to authenticated
+  using (scope = 'shared' or owner_id = (select auth.uid()) or owner_id is null);
 drop policy if exists daily_task_logs_all on public.daily_task_logs;
 create policy daily_task_logs_all on public.daily_task_logs for all to authenticated
   using (true) with check (true);
@@ -280,3 +450,7 @@ to authenticated;
 
 grant execute on function public.move_and_delete_tool_category(text, text) to authenticated;
 grant execute on function public.reorder_tool_categories(text[]) to authenticated;
+revoke execute on function public.delete_empty_credential_category(text) from public;
+revoke execute on function public.reorder_credential_categories(text, text[]) from public;
+grant execute on function public.delete_empty_credential_category(text) to authenticated;
+grant execute on function public.reorder_credential_categories(text, text[]) to authenticated;

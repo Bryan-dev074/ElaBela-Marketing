@@ -10,7 +10,7 @@ const FONT_TYPES_BY_EXTENSION: Record<string, Set<string>> = {
   otf: new Set(["font/otf"]),
 };
 
-export type AssetFolder = "publications" | "tools" | "brand/fonts";
+export type AssetFolder = "publications" | "tools" | "brand/fonts" | "credential-categories";
 export type AssetValidationRules = { kind: "image" | "font"; maxBytes: number };
 export type AssetValidationResult = { ok: true } | { ok: false; error: string };
 export type AssetMutationResult = { ok: true; url: string } | { ok: false; error: string };

@@ -1,17 +1,37 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Lock, Plus, Copy, Check, Pencil, Trash2, Globe, ShieldCheck } from "lucide-react";
-import { PageHeader, Card, Button, Modal, Field, Input, Select } from "@/components/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Check, Copy, Eye, EyeOff, Globe, Lock, Pencil, Plus, Settings2, ShieldCheck, Trash2 } from "lucide-react";
+import { CredentialCategoryManager } from "@/components/CredentialCategoryManager";
 import { IconPicker } from "@/components/IconPicker";
-import { useCredentials, type CredRow } from "@/lib/db";
+import { Button, Card, Field, IconGlyph, Input, Modal, PageHeader, Select } from "@/components/ui";
+import {
+  categoryIdAfterScopeChange,
+  groupCredentials,
+  isCategoryCompatible,
+  reorderCredentialCategoriesLocally,
+  UNCATEGORIZED_CREDENTIAL_CATEGORY_ID,
+  type CredentialCategory,
+  type CredentialScope,
+} from "@/lib/credential-categories";
+import {
+  deleteEmptyCredentialCategory,
+  reorderCredentialCategories,
+  useCredentialCategories,
+  useCredentials,
+  type CollectionMutationResult,
+  type CredRow,
+} from "@/lib/db";
 import type { Role } from "@/lib/brand";
 
 type Cred = CredRow;
-const empty = (scope: Cred["scope"]): Cred => ({ id: "", platform: "", icon: "🔑", idType: "email", identifier: "", secret: "", scope });
+const empty = (scope: CredentialScope): Cred => ({ id: "", platform: "", icon: "🔑", idType: "email", identifier: "", secret: "", scope });
 
-/** Valor secreto que pasa de puntos borrosos a texto nítido con una transición blur → sharp. */
+function nextCredentialId() {
+  return crypto.randomUUID?.() ?? `credential-${Date.now()}`;
+}
+
 function RevealValue({ show, value, hidden }: { show: boolean; value: string; hidden: string }) {
   return (
     <span className="relative inline-flex">
@@ -31,7 +51,6 @@ function RevealValue({ show, value, hidden }: { show: boolean; value: string; hi
   );
 }
 
-/** Ícono de copiar que se transforma en check con un pop animado. */
 function CopyIcon({ done }: { done: boolean }) {
   return (
     <AnimatePresence mode="popLayout" initial={false}>
@@ -49,121 +68,270 @@ function CopyIcon({ done }: { done: boolean }) {
   );
 }
 
-function Row({ c, onEdit, onDelete }: { c: Cred; onEdit: () => void; onDelete: () => void }) {
+function Row({
+  credential,
+  disabled,
+  onEdit,
+  onDelete,
+}: {
+  credential: Cred;
+  disabled: boolean;
+  onEdit: () => void;
+  onDelete: () => Promise<CollectionMutationResult>;
+}) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => () => {
     if (copyTimer.current) clearTimeout(copyTimer.current);
     if (armTimer.current) clearTimeout(armTimer.current);
   }, []);
 
-  const configured = c.identifier || c.secret;
-  const copy = (v: string, k: string) =>
-    v && navigator.clipboard?.writeText(v).then(() => {
-      setCopied(k);
+  const configured = credential.identifier || credential.secret;
+  const copy = async (value: string, key: string) => {
+    if (!value || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(null), 1400);
-    });
-  const handleDelete = () => {
-    if (armed) {
+    } catch {
+      // Clipboard permission failures leave the credential unchanged.
+    }
+  };
+  const handleDelete = async () => {
+    if (disabled || deleting) return;
+    if (!armed) {
+      setArmed(true);
       if (armTimer.current) clearTimeout(armTimer.current);
-      onDelete();
+      armTimer.current = setTimeout(() => setArmed(false), 2600);
       return;
     }
-    setArmed(true);
     if (armTimer.current) clearTimeout(armTimer.current);
-    armTimer.current = setTimeout(() => setArmed(false), 2600);
+    setDeleting(true);
+    const result = await onDelete();
+    setDeleting(false);
+    if (!result.ok) setArmed(false);
   };
 
-  const iconBtn = "press flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/20 hover:bg-white/5 hover:text-white";
+  const iconButton = "press flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-35";
 
   return (
-    <div className="card-sheen group flex items-center gap-3 rounded-xl border border-white/8 bg-black/20 px-4 py-3 transition-colors duration-200 hover:border-nude/20 hover:bg-black/30">
-      <span className="text-lg">{c.icon}</span>
+    <div data-credential-row className="card-sheen group flex items-center gap-3 rounded-xl border border-white/8 bg-black/20 px-4 py-3 transition-colors duration-200 hover:border-nude/20 hover:bg-black/30">
+      <IconGlyph icon={credential.icon} size={22} rounded="rounded-md" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-white">{c.platform}</p>
+        <p className="text-sm font-medium text-white">{credential.platform}</p>
         {configured ? (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-[var(--muted)]">
-            <span className="capitalize text-[var(--faint)]">{c.idType}:</span>
+            <span className="capitalize text-[var(--faint)]">{credential.idType}:</span>
             <button
               type="button"
-              onClick={() => copy(c.identifier, "id-" + c.id)}
+              onClick={() => void copy(credential.identifier, `id-${credential.id}`)}
               className="press inline-flex items-center gap-1 rounded transition hover:text-white"
               data-cursor-label="Copiar"
-              aria-label={`Copiar ${c.idType === "email" ? "correo" : "usuario"}`}
+              aria-label={`Copiar ${credential.idType === "email" ? "correo" : "usuario"}`}
             >
-              <RevealValue show={show} value={c.identifier} hidden={"•".repeat(Math.min(10, (c.identifier || "······").length))} />
-              {copied === "id-" + c.id && (
-                <motion.span initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="inline-flex">
-                  <Check className="h-3 w-3 text-emerald-400" />
-                </motion.span>
-              )}
+              <RevealValue show={show} value={credential.identifier} hidden={"•".repeat(Math.min(10, (credential.identifier || "······").length))} />
+              {copied === `id-${credential.id}` ? <Check className="h-3 w-3 text-emerald-400" /> : null}
             </button>
             <span className="text-[var(--faint)]">clave:</span>
-            <RevealValue show={show} value={c.secret} hidden="••••••••" />
+            <RevealValue show={show} value={credential.secret} hidden="••••••••" />
           </div>
         ) : (
           <p className="font-mono text-xs text-[var(--faint)]">— sin configurar —</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        {configured && (
+        {configured ? (
           <>
-            <button
-              onClick={() => setShow((s) => !s)}
-              className={iconBtn}
-              aria-label={show ? "Ocultar valores" : "Mostrar valores"}
-              data-cursor-label={show ? "Ocultar" : "Mostrar"}
-            >
+            <button type="button" onClick={() => setShow((current) => !current)} className={iconButton} aria-label={show ? "Ocultar valores" : "Mostrar valores"} data-cursor-label={show ? "Ocultar" : "Mostrar"}>
               {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
-            <button
-              onClick={() => copy(c.secret, "sec-" + c.id)}
-              className={iconBtn}
-              aria-label="Copiar contraseña"
-              data-cursor-label="Copiar"
-            >
-              <CopyIcon done={copied === "sec-" + c.id} />
+            <button type="button" onClick={() => void copy(credential.secret, `sec-${credential.id}`)} className={iconButton} aria-label="Copiar contraseña" data-cursor-label="Copiar">
+              <CopyIcon done={copied === `sec-${credential.id}`} />
             </button>
           </>
-        )}
-        <button onClick={onEdit} className={iconBtn} aria-label="Editar acceso" data-cursor-label="Editar">
+        ) : null}
+        <button type="button" onClick={onEdit} disabled={disabled || deleting} className={iconButton} aria-label="Editar acceso" data-cursor-label="Editar">
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
-          onClick={handleDelete}
-          className={`press flex h-8 items-center justify-center rounded-lg border text-xs transition ${
-            armed
+          type="button"
+          onClick={() => void handleDelete()}
+          disabled={disabled || deleting}
+          className={`press flex h-8 items-center justify-center rounded-lg border text-xs transition disabled:cursor-not-allowed disabled:opacity-35 ${
+            armed || deleting
               ? "border-red-400/40 bg-red-500/15 px-2.5 font-medium text-red-300"
               : "w-8 border-white/10 text-[var(--faint)] opacity-0 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
           }`}
-          aria-label={armed ? "Confirmar eliminación" : "Eliminar acceso"}
-          data-cursor-label={armed ? "Confirmar" : "Eliminar"}
+          aria-label={deleting ? "Eliminando acceso" : armed ? "Confirmar eliminación" : "Eliminar acceso"}
+          data-cursor-label={deleting ? "Eliminando" : armed ? "Confirmar" : "Eliminar"}
           data-cursor-color="#f87171"
         >
-          {armed ? "¿Seguro?" : <Trash2 className="h-3.5 w-3.5" />}
+          {deleting ? "Eliminando…" : armed ? "¿Seguro?" : <Trash2 className="h-3.5 w-3.5" />}
         </button>
       </div>
     </div>
   );
 }
 
+function CredentialGroups({
+  scope,
+  groups,
+  ready,
+  onEdit,
+  onDelete,
+}: {
+  scope: CredentialScope;
+  groups: ReturnType<typeof groupCredentials<Cred>>;
+  ready: boolean;
+  onEdit: (credential: Cred) => void;
+  onDelete: (credentialId: string) => Promise<CollectionMutationResult>;
+}) {
+  return (
+    <div className="space-y-5">
+      {groups.map(({ category, credentials }) => {
+        const uncategorized = category.id === UNCATEGORIZED_CREDENTIAL_CATEGORY_ID;
+        const label = uncategorized
+          ? `Credenciales ${scope === "shared" ? "compartidas" : "privadas"} sin categoría`
+          : `Categoría ${scope === "shared" ? "compartida" : "privada"} ${category.name}`;
+        return (
+          <section key={category.id} role="region" aria-label={label} className="space-y-2.5">
+            <div className="flex items-center gap-2 border-b border-white/8 pb-2">
+              <IconGlyph icon={category.icon} size={20} rounded="rounded-md" />
+              <h3 className="text-sm font-semibold text-white">{category.name}</h3>
+              <span className="text-[11px] text-[var(--faint)]">{credentials.length}</span>
+            </div>
+            {credentials.map((credential) => (
+              <Row key={credential.id} credential={credential} disabled={!ready} onEdit={() => onEdit(credential)} onDelete={() => onDelete(credential.id)} />
+            ))}
+            {credentials.length === 0 ? <p className="rounded-xl border border-dashed border-white/8 py-4 text-center text-xs text-[var(--faint)]">Sin accesos en esta categoría.</p> : null}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CredencialesView({ role, ownerId }: { role: Role; ownerId: string }) {
   void role;
-  const { items: creds, add, update, remove } = useCredentials(ownerId);
+  const credentialsStore = useCredentials(ownerId);
+  const categoriesStore = useCredentialCategories(ownerId);
   const [editing, setEditing] = useState<Cred | null>(null);
+  const [managingScope, setManagingScope] = useState<CredentialScope | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const shared = creds.filter((c) => c.scope === "shared");
-  const priv = creds.filter((c) => c.scope === "private" && (!c.ownerId || c.ownerId === ownerId));
+  const sharedGroups = useMemo(
+    () => groupCredentials(credentialsStore.items, categoriesStore.items, "shared", ownerId),
+    [categoriesStore.items, credentialsStore.items, ownerId],
+  );
+  const privateGroups = useMemo(
+    () => groupCredentials(credentialsStore.items, categoriesStore.items, "private", ownerId),
+    [categoriesStore.items, credentialsStore.items, ownerId],
+  );
+  const sharedCount = credentialsStore.items.filter((credential) => credential.scope === "shared").length;
+  const privateCount = credentialsStore.items.filter((credential) => credential.scope === "private" && (!credential.ownerId || credential.ownerId === ownerId)).length;
+  const collectionsReady = credentialsStore.ready && categoriesStore.ready;
+  const displayedError = editing ? null : mutationError || credentialsStore.error || categoriesStore.error;
 
-  function save() {
-    if (!editing || !editing.platform.trim()) return;
-    if (editing.id) update(editing.id, editing);
-    else add({ ...editing, id: "c" + Date.now() });
+  const openEditor = (credential: Cred) => {
+    setMutationError(null);
+    credentialsStore.clearError();
+    setEditing({ ...credential });
+  };
+
+  const closeEditor = () => {
+    if (saving) return;
     setEditing(null);
+    setMutationError(null);
+    credentialsStore.clearError();
+  };
+
+  const setScope = (scope: CredentialScope) => {
+    if (!editing || saving) return;
+    setEditing({
+      ...editing,
+      scope,
+      ownerId: scope === "private" ? ownerId : undefined,
+      categoryId: categoryIdAfterScopeChange(editing.categoryId, scope, categoriesStore.items, ownerId),
+    });
+  };
+
+  async function saveCredential() {
+    if (!editing || saving || !editing.platform.trim()) return;
+    const credential: Cred = {
+      ...editing,
+      id: editing.id || nextCredentialId(),
+      platform: editing.platform.trim(),
+      ownerId: editing.scope === "private" ? ownerId : undefined,
+      categoryId: categoryIdAfterScopeChange(editing.categoryId, editing.scope, categoriesStore.items, ownerId),
+    };
+    setSaving(true);
+    setMutationError(null);
+    credentialsStore.clearError();
+    const result = editing.id
+      ? await credentialsStore.updateAsync(editing.id, credential)
+      : await credentialsStore.addAsync(credential);
+    setSaving(false);
+    if (!result.ok) {
+      setMutationError(result.error);
+      return;
+    }
+    setEditing(null);
+  }
+
+  async function removeCredential(credentialId: string) {
+    setMutationError(null);
+    credentialsStore.clearError();
+    const result = await credentialsStore.removeAsync(credentialId);
+    if (!result.ok) setMutationError(result.error);
+    return result;
+  }
+
+  const compatibleEditorCategories = editing
+    ? categoriesStore.items
+      .filter((category) => isCategoryCompatible(category, editing, ownerId))
+      .sort((left, right) => left.sort - right.sort)
+    : [];
+  const managedCategories = managingScope
+    ? categoriesStore.items.filter((category) => category.scope === managingScope
+      && (managingScope === "shared" ? !category.ownerId : category.ownerId === ownerId))
+    : [];
+  const managedCredentials = managingScope
+    ? credentialsStore.items.filter((credential) => credential.scope === managingScope
+      && (managingScope === "shared" || !credential.ownerId || credential.ownerId === ownerId))
+    : [];
+
+  async function addCategory(category: CredentialCategory) {
+    categoriesStore.clearError();
+    return categoriesStore.addAsync(category);
+  }
+
+  async function updateCategory(category: CredentialCategory) {
+    categoriesStore.clearError();
+    return categoriesStore.updateAsync(category.id, category);
+  }
+
+  async function reorderCategories(categoryIds: string[]) {
+    if (!managingScope) return { ok: false as const, error: "No se pudo determinar el alcance de las categorías." };
+    categoriesStore.clearError();
+    const result = await reorderCredentialCategories(managingScope, categoryIds);
+    if (result.ok) {
+      categoriesStore.setItems((current) => reorderCredentialCategoriesLocally(current, managingScope, categoryIds, ownerId));
+    }
+    return result;
+  }
+
+  async function deleteCategory(categoryId: string) {
+    categoriesStore.clearError();
+    const result = await deleteEmptyCredentialCategory(categoryId);
+    if (result.ok) categoriesStore.setItems((current) => current.filter((category) => category.id !== categoryId));
+    return result;
   }
 
   return (
@@ -172,7 +340,7 @@ export default function CredencialesView({ role, ownerId }: { role: Role; ownerI
         eyebrow="Seguridad"
         title="Credenciales"
         description="Dos niveles bien claros: las compartidas las ve todo el equipo; las privadas solo vos."
-        action={<Button onClick={() => setEditing(empty("private"))}><Plus className="h-4 w-4" /> Agregar acceso</Button>}
+        action={<Button disabled={!collectionsReady} onClick={() => openEditor(empty("private"))}><Plus className="h-4 w-4" /> Agregar acceso</Button>}
       />
 
       <Card className="mb-6 flex items-center gap-3.5 border-amber-400/15 bg-gradient-to-r from-amber-400/[0.07] via-amber-400/[0.03] to-transparent p-4" hover={false}>
@@ -185,66 +353,91 @@ export default function CredencialesView({ role, ownerId }: { role: Role; ownerI
         </div>
       </Card>
 
-      {/* Shared */}
+      {displayedError ? <p role="alert" className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">{displayedError}</p> : null}
+
       <Card className="mb-6 p-6" hover={false}>
-        <div className="mb-1 flex items-center gap-2">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
           <Globe className="h-5 w-5 text-emerald-300" />
           <h2 className="text-lg font-semibold text-white">Compartidas del equipo</h2>
           <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 shadow-[0_0_18px_-6px_rgba(52,211,153,0.6)]">Todos las ven</span>
+          <Button variant="ghost" className="ml-auto min-h-11" disabled={!collectionsReady} onClick={() => setManagingScope("shared")}><Settings2 className="h-4 w-4" /> Gestionar categorías</Button>
         </div>
         <p className="mb-4 text-xs text-[var(--muted)]">Cuentas y herramientas que usa todo el equipo.</p>
-        <div className="space-y-2.5">
-          {shared.map((c) => <Row key={c.id} c={c} onEdit={() => setEditing(c)} onDelete={() => remove(c.id)} />)}
-          {shared.length === 0 && (
-            <div className="rounded-xl border border-dashed border-white/10 py-6 text-center text-sm text-[var(--muted)]">Todavía no hay accesos compartidos. Creá uno y elegí «Compartida».</div>
-          )}
-        </div>
+        {sharedCount ? (
+          <CredentialGroups scope="shared" groups={sharedGroups} ready={collectionsReady} onEdit={openEditor} onDelete={removeCredential} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-white/10 py-6 text-center text-sm text-[var(--muted)]">Todavía no hay accesos compartidos. Creá uno y elegí «Compartida».</div>
+        )}
       </Card>
 
-      {/* Private */}
       <Card className="p-6" hover={false}>
-        <div className="mb-1 flex items-center gap-2">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
           <Lock className="h-5 w-5 text-nude" />
           <h2 className="text-lg font-semibold text-white">Mis credenciales privadas</h2>
-          <span className="glow-pulse inline-flex items-center rounded-full border border-nude/30 bg-nude/10 px-2 py-0.5 text-[10px] font-medium">
-            <span className="glow-text">Solo vos</span>
-          </span>
+          <span className="glow-pulse inline-flex items-center rounded-full border border-nude/30 bg-nude/10 px-2 py-0.5 text-[10px] font-medium"><span className="glow-text">Solo vos</span></span>
+          <Button variant="ghost" className="ml-auto min-h-11" disabled={!collectionsReady} onClick={() => setManagingScope("private")}><Settings2 className="h-4 w-4" /> Gestionar categorías privadas</Button>
         </div>
         <p className="mb-4 text-xs text-[var(--muted)]">Solo vos ves estas. Nadie más del equipo tiene acceso.</p>
-        <div className="space-y-2.5">
-          {priv.map((c) => <Row key={c.id} c={c} onEdit={() => setEditing(c)} onDelete={() => remove(c.id)} />)}
-          {priv.length === 0 && (
-            <div className="rounded-xl border border-dashed border-white/10 py-6 text-center text-sm text-[var(--muted)]">Sin credenciales privadas. Agregá una con «Agregar acceso».</div>
-          )}
-        </div>
+        {privateCount ? (
+          <CredentialGroups scope="private" groups={privateGroups} ready={collectionsReady} onEdit={openEditor} onDelete={removeCredential} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-white/10 py-6 text-center text-sm text-[var(--muted)]">Sin credenciales privadas. Agregá una con «Agregar acceso».</div>
+        )}
       </Card>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? "Editar acceso" : "Nuevo acceso"}
+      <Modal
+        open={!!editing}
+        onClose={closeEditor}
+        title={editing?.id ? "Editar acceso" : "Nuevo acceso"}
         description="Elegí si es compartida (todos) o privada (solo vos), y si el identificador es correo o usuario."
-        footer={<><Button variant="ghost" onClick={() => setEditing(null)}>Cancelar</Button><Button onClick={save}>Guardar</Button></>}>
-        {editing && (
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeEditor} disabled={saving}>Cancelar</Button>
+            <Button onClick={() => void saveCredential()} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</Button>
+          </>
+        )}
+      >
+        {editing ? (
           <div className="space-y-4">
+            {mutationError ? <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">{mutationError}</p> : null}
             <div>
               <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Visibilidad</span>
               <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
-                <button type="button" onClick={() => setEditing({ ...editing, scope: "shared" })} className={`press flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition ${editing.scope === "shared" ? "bg-white text-black" : "text-[var(--muted)] hover:text-white"}`}><Globe className="h-3.5 w-3.5" /> Compartida</button>
-                <button type="button" onClick={() => setEditing({ ...editing, scope: "private" })} className={`press flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition ${editing.scope === "private" ? "bg-white text-black" : "text-[var(--muted)] hover:text-white"}`}><Lock className="h-3.5 w-3.5" /> Privada</button>
+                <button type="button" disabled={saving} aria-label="Compartida" onClick={() => setScope("shared")} className={`press flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition disabled:opacity-50 ${editing.scope === "shared" ? "bg-white text-black" : "text-[var(--muted)] hover:text-white"}`}><Globe className="h-3.5 w-3.5" /> Compartida</button>
+                <button type="button" disabled={saving} aria-label="Privada" onClick={() => setScope("private")} className={`press flex min-h-11 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition disabled:opacity-50 ${editing.scope === "private" ? "bg-white text-black" : "text-[var(--muted)] hover:text-white"}`}><Lock className="h-3.5 w-3.5" /> Privada</button>
               </div>
             </div>
             <div className="flex gap-3">
-              <div>
-                <Field label="Ícono">
-                  <IconPicker value={editing.icon} onChange={(icon) => setEditing({ ...editing, icon })} />
-                </Field>
+              <div className={saving ? "pointer-events-none opacity-50" : ""}>
+                <Field label="Ícono"><IconPicker value={editing.icon} onChange={(icon) => setEditing({ ...editing, icon })} /></Field>
               </div>
-              <div className="flex-1"><Field label="Plataforma"><Input value={editing.platform} onChange={(e) => setEditing({ ...editing, platform: e.target.value })} placeholder="Ej: Instagram" /></Field></div>
+              <div className="flex-1"><Field label="Plataforma"><Input disabled={saving} value={editing.platform} onChange={(event) => setEditing({ ...editing, platform: event.target.value })} placeholder="Ej: Instagram" /></Field></div>
             </div>
-            <Field label="Tipo de identificador"><Select value={editing.idType} onChange={(e) => setEditing({ ...editing, idType: e.target.value as Cred["idType"] })}><option value="email">Correo</option><option value="usuario">Usuario</option></Select></Field>
-            <Field label={editing.idType === "email" ? "Correo" : "Usuario"}><Input value={editing.identifier} onChange={(e) => setEditing({ ...editing, identifier: e.target.value })} placeholder={editing.idType === "email" ? "correo@ejemplo.com" : "@usuario"} /></Field>
-            <Field label="Contraseña"><Input value={editing.secret} onChange={(e) => setEditing({ ...editing, secret: e.target.value })} placeholder="••••••••" /></Field>
+            <Field label="Categoría">
+              <Select aria-label="Categoría" disabled={saving} value={editing.categoryId ?? ""} onChange={(event) => setEditing({ ...editing, categoryId: event.target.value || undefined })}>
+                <option value="">Sin categoría</option>
+                {compatibleEditorCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Tipo de identificador"><Select disabled={saving} value={editing.idType} onChange={(event) => setEditing({ ...editing, idType: event.target.value as Cred["idType"] })}><option value="email">Correo</option><option value="usuario">Usuario</option></Select></Field>
+            <Field label={editing.idType === "email" ? "Correo" : "Usuario"}><Input disabled={saving} value={editing.identifier} onChange={(event) => setEditing({ ...editing, identifier: event.target.value })} placeholder={editing.idType === "email" ? "correo@ejemplo.com" : "@usuario"} /></Field>
+            <Field label="Contraseña"><Input disabled={saving} value={editing.secret} onChange={(event) => setEditing({ ...editing, secret: event.target.value })} placeholder="••••••••" /></Field>
           </div>
-        )}
+        ) : null}
       </Modal>
+
+      <CredentialCategoryManager
+        open={!!managingScope}
+        onClose={() => setManagingScope(null)}
+        scope={managingScope ?? "shared"}
+        ownerId={ownerId}
+        categories={managedCategories}
+        credentials={managedCredentials}
+        onAdd={addCategory}
+        onUpdate={updateCategory}
+        onReorder={reorderCategories}
+        onDelete={deleteCategory}
+      />
     </div>
   );
 }

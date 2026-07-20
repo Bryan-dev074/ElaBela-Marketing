@@ -13,6 +13,7 @@ import {
   normalizeLegacyCategory,
   type ToolCategoryRow,
 } from "@/lib/tool-categories";
+import type { CredentialCategory } from "@/lib/credential-categories";
 
 const supabase = createClient();
 const nn = (v: string | undefined) => (v && v.length ? v : null); // "" -> null for date cols
@@ -459,12 +460,83 @@ export const useBrandAssets = () =>
     toRow: brandAssetToRow,
   });
 
-export interface CredRow { id: string; platform: string; icon: string; idType: "email" | "usuario"; identifier: string; secret: string; scope: "shared" | "private"; ownerId?: string }
+export interface CredRow { id: string; platform: string; icon: string; idType: "email" | "usuario"; identifier: string; secret: string; scope: "shared" | "private"; ownerId?: string; categoryId?: string }
+
+export function credentialFromRow(r: Record<string, unknown>): CredRow {
+  return {
+    id: r.id as string,
+    platform: r.platform as string,
+    icon: (r.icon as string) || "🔑",
+    idType: (r.id_type as "email" | "usuario") || "email",
+    identifier: (r.identifier as string) || "",
+    secret: (r.secret as string) || "",
+    scope: (r.scope as "shared" | "private") || "private",
+    ownerId: (r.owner_id as string) || undefined,
+    categoryId: (r.category_id as string) || undefined,
+  };
+}
+
+export function credentialToRow(c: CredRow, ownerId: string): Record<string, unknown> {
+  return {
+    id: c.id,
+    platform: c.platform,
+    icon: c.icon,
+    id_type: c.idType,
+    identifier: c.identifier ?? null,
+    secret: c.secret ?? null,
+    scope: c.scope,
+    owner_id: c.scope === "private" ? (c.ownerId || ownerId || null) : null,
+    category_id: c.categoryId ?? null,
+  };
+}
+
 export const useCredentials = (ownerId: string) =>
   useCollection<CredRow>({
     table: "credentials",
     seed: [],
     order: { col: "created_at" },
-    fromRow: (r) => ({ id: r.id as string, platform: r.platform as string, icon: (r.icon as string) || "🔑", idType: (r.id_type as "email" | "usuario") || "email", identifier: (r.identifier as string) || "", secret: (r.secret as string) || "", scope: (r.scope as "shared" | "private") || "private", ownerId: (r.owner_id as string) || undefined }),
-    toRow: (c) => ({ id: c.id, platform: c.platform, icon: c.icon, id_type: c.idType, identifier: c.identifier ?? null, secret: c.secret ?? null, scope: c.scope, owner_id: c.scope === "private" ? (c.ownerId || ownerId || null) : null }),
+    fromRow: credentialFromRow,
+    toRow: (credential) => credentialToRow(credential, ownerId),
   });
+
+export function credentialCategoryFromRow(r: Record<string, unknown>): CredentialCategory {
+  return {
+    id: r.id as string,
+    name: (r.name as string)?.trim(),
+    icon: (r.icon as string) || "🔑",
+    scope: r.scope === "shared" ? "shared" : "private",
+    ownerId: (r.owner_id as string) || undefined,
+    sort: typeof r.sort === "number" ? r.sort : 0,
+    createdAt: (r.created_at as string) || "",
+  };
+}
+
+export function credentialCategoryToRow(category: CredentialCategory): Record<string, unknown> {
+  return {
+    id: category.id,
+    name: category.name.trim(),
+    icon: category.icon || "🔑",
+    scope: category.scope,
+    owner_id: category.scope === "private" ? (category.ownerId ?? null) : null,
+    sort: category.sort,
+  };
+}
+
+export const useCredentialCategories = (_ownerId: string) =>
+  useCollection<CredentialCategory>({
+    table: "credential_categories",
+    seed: [],
+    order: { col: "sort" },
+    fromRow: credentialCategoryFromRow,
+    toRow: credentialCategoryToRow,
+  });
+
+export async function deleteEmptyCredentialCategory(categoryId: string): Promise<CollectionMutationResult> {
+  const { error } = await supabase.rpc("delete_empty_credential_category", { p_category_id: categoryId });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function reorderCredentialCategories(scope: CredRow["scope"], categoryIds: string[]): Promise<CollectionMutationResult> {
+  const { error } = await supabase.rpc("reorder_credential_categories", { p_scope: scope, p_category_ids: categoryIds });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}

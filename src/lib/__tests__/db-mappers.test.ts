@@ -1,6 +1,10 @@
 import {
   brandAssetFromRow,
   brandAssetToRow,
+  credentialCategoryFromRow,
+  credentialCategoryToRow,
+  credentialFromRow,
+  credentialToRow,
   postTypeToRow,
   publicationFromRow,
   publicationToRow,
@@ -156,5 +160,38 @@ describe("brand asset compatibility mapping", () => {
       file_format: null,
       storage_path: null,
     });
+  });
+});
+
+describe("credential category compatibility mapping", () => {
+  it("round-trips category fields without inventing a shared owner", () => {
+    const category = credentialCategoryFromRow({
+      id: "social",
+      name: "  Redes Sociales  ",
+      icon: "📱",
+      scope: "shared",
+      owner_id: null,
+      sort: 2,
+      created_at: "2026-07-20T00:00:00Z",
+    });
+    expect(category).toEqual({ id: "social", name: "Redes Sociales", icon: "📱", scope: "shared", ownerId: undefined, sort: 2, createdAt: "2026-07-20T00:00:00Z" });
+    expect(credentialCategoryToRow(category)).toEqual({ id: "social", name: "Redes Sociales", icon: "📱", scope: "shared", owner_id: null, sort: 2 });
+  });
+
+  it("preserves legacy credential behavior while mapping nullable category IDs", () => {
+    const credential = credentialFromRow({
+      id: "credential-1",
+      platform: "Google",
+      icon: "🔑",
+      id_type: "email",
+      identifier: "team@example.com",
+      secret: "secret",
+      scope: "private",
+      owner_id: null,
+      category_id: null,
+    });
+    expect(credential).toMatchObject({ ownerId: undefined, categoryId: undefined });
+    expect(credentialToRow({ ...credential, scope: "shared", categoryId: "social" }, "user-1")).toMatchObject({ owner_id: null, category_id: "social" });
+    expect(credentialToRow({ ...credential, scope: "private", categoryId: "personal" }, "user-1")).toMatchObject({ owner_id: "user-1", category_id: "personal" });
   });
 });
