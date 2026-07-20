@@ -2,6 +2,8 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, vi } from "vitest";
 
+vi.stubGlobal("React", React);
+
 const mocks = vi.hoisted(() => ({
   addAsync: vi.fn(),
   updateAsync: vi.fn(),
@@ -14,14 +16,30 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   usePostTypes: () => ({
-    items: [],
+    items: [{
+      id: "post-1",
+      name: "Guía con Tools",
+      icon: "✨",
+      desc: "Prueba",
+      accent: "#d6ab99",
+      example: "",
+      exampleImage: "",
+      exampleImages: [],
+      guide: "Pasos",
+      toolIds: ["prompt-transitioned", "link-current"],
+    }],
     addAsync: mocks.addAsync,
     updateAsync: mocks.updateAsync,
     removeAsync: mocks.removeAsync,
     error: null,
     clearError: mocks.clearError,
   }),
-  useToolItems: () => ({ items: [] }),
+  useToolItems: () => ({
+    items: [
+      { id: "prompt-transitioned", category: "prompts", categoryId: "prompts", kind: "prompt", title: "Prompt con URL dormida", note: "Copiar", href: "https://dormant.example/", image: "", icon: "", steps: "Paso" },
+      { id: "link-current", category: "apps", categoryId: "apps", kind: "link", title: "Enlace actual", note: "Abrir", href: "https://active.example/", image: "", icon: "", steps: "" },
+    ],
+  }),
 }));
 
 vi.mock("@/lib/storage", () => ({
@@ -77,6 +95,15 @@ describe("PublicacionesPage editor persistence", () => {
     mocks.removeAsync.mockResolvedValue({ ok: true });
     mocks.removeAssetByPublicUrl.mockResolvedValue({ ok: true });
     mocks.fileToImage.mockResolvedValue("data:image/jpeg;base64,aW1hZ2U=");
+  });
+
+  it("does not open a dormant URL for a related Tool that transitioned to prompt", () => {
+    render(<PublicacionesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir guía de Guía con Tools" }));
+
+    expect(screen.getByText("Prompt con URL dormida").closest("a")).toBeNull();
+    expect(screen.getByRole("link", { name: /Enlace actual/ })).toHaveAttribute("href", "https://active.example/");
+    expect(screen.queryByRole("link", { name: /Prompt con URL dormida/ })).not.toBeInTheDocument();
   });
 
   it("rolls back successful uploads when another upload fails and retains the draft", async () => {

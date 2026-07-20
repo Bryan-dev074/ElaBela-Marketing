@@ -238,7 +238,7 @@ function GuideContent({ post, tools }: { post: PostType; tools: ToolItem[] }) {
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {relatedTools.map((tool) => {
-              const href = safeExternalHref(tool.href);
+              const href = tool.kind === "link" ? safeExternalHref(tool.href) : null;
               const content = (
                 <>
                   <IconGlyph icon={tool.icon || (tool.kind === "prompt" ? "💬" : "🔗")} size={28} />

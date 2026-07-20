@@ -195,6 +195,7 @@ export default function ToolsPage() {
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [imgErr, setImgErr] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [mutationNotice, setMutationNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -233,10 +234,20 @@ export default function ToolsPage() {
     setPendingImage(null);
     setImgErr(null);
     setMutationError(null);
+    setMutationNotice(null);
   }
 
   async function cleanupUploads(urls: string[]) {
-    await Promise.all(urls.map((url) => removeAssetByPublicUrl(url)));
+    const results = await Promise.all(urls.map((url) => removeAssetByPublicUrl(url)));
+    const failures = results.flatMap((result) => result.ok ? [] : [result.error]);
+    return failures.length > 0 ? failures.join(" ") : null;
+  }
+
+  async function errorWithRollback(primaryError: string, urls: string[]) {
+    const cleanupError = await cleanupUploads(urls);
+    return cleanupError
+      ? `${primaryError} Además, no se pudo revertir el archivo nuevo: ${cleanupError}`
+      : primaryError;
   }
 
   async function deleteTool(item: ToolItem) {
@@ -267,6 +278,7 @@ export default function ToolsPage() {
 
     setSaving(true);
     setMutationError(null);
+    setMutationNotice(null);
     const uploadedUrls: string[] = [];
     let image = editing.image;
     let icon = editing.icon;
@@ -285,15 +297,14 @@ export default function ToolsPage() {
       try {
         iconFile = assetFileFromDataUrl(icon, "tool-icon");
       } catch (error) {
-        await cleanupUploads(uploadedUrls);
-        setMutationError(error instanceof Error ? error.message : "El ícono personalizado no es válido.");
+        const primaryError = error instanceof Error ? error.message : "El ícono personalizado no es válido.";
+        setMutationError(await errorWithRollback(primaryError, uploadedUrls));
         setSaving(false);
         return;
       }
       const uploaded = await uploadAsset(iconFile, "tools");
       if (!uploaded.ok) {
-        await cleanupUploads(uploadedUrls);
-        setMutationError(uploaded.error);
+        setMutationError(await errorWithRollback(uploaded.error, uploadedUrls));
         setSaving(false);
         return;
       }
@@ -301,29 +312,24 @@ export default function ToolsPage() {
       uploadedUrls.push(uploaded.url);
     }
 
-    const it: ToolItem = {
+    const it = syncToolToCategory<ToolItem>({
       ...editing,
       id: editing.id || `it-${crypto.randomUUID()}`,
       title: editing.title.trim(),
-      category: category.id,
-      categoryId: category.id,
-      kind: category.kind,
-      href: category.kind === "link" ? safeHref || "" : "",
-      steps: category.kind === "prompt" ? editing.steps : "",
+      href: category.kind === "link" ? safeHref || "" : editing.href,
       image,
       icon,
-    };
+    }, category);
     const result = editing.id ? await updateAsync(editing.id, it) : await addAsync(it);
     if (!result.ok) {
-      await cleanupUploads(uploadedUrls);
-      setMutationError(result.error);
+      setMutationError(await errorWithRollback(result.error, uploadedUrls));
       setSaving(false);
       return;
     }
     const replacedAssets = [editingOriginal?.image, editingOriginal?.icon].filter((url): url is string => !!url && isManagedAssetUrl(url) && url !== image && url !== icon);
     const cleanupResults = await Promise.all(replacedAssets.map((url) => removeAssetByPublicUrl(url)));
     const cleanupFailure = cleanupResults.find((result) => !result.ok);
-    if (cleanupFailure && !cleanupFailure.ok) setMutationError(`El recurso se guardó, pero no se pudo limpiar el archivo anterior: ${cleanupFailure.error}`);
+    if (cleanupFailure && !cleanupFailure.ok) setMutationNotice(`El recurso se guardó, pero no se pudo limpiar el archivo anterior: ${cleanupFailure.error}`);
     setEditing(null);
     setEditingOriginal(null);
     setPendingImage(null);
@@ -421,6 +427,11 @@ export default function ToolsPage() {
       {mutationError || toolStore.error || categoryStore.error ? (
         <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           {mutationError || toolStore.error || categoryStore.error}
+        </div>
+      ) : null}
+      {mutationNotice ? (
+        <div role="status" className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+          {mutationNotice}
         </div>
       ) : null}
 
