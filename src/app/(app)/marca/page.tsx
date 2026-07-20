@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, FileType2, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { Button, Card, Field, Input, Modal, PageHeader, Reveal } from "@/components/ui";
 import {
@@ -158,6 +158,7 @@ export default function MarcaPage() {
   const [dialogError, setDialogError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
+  const mutationLock = useRef(false);
 
   const colors: Swatch[] = [
     ...BRAND_COLORS.map((color) => ({ ...color })),
@@ -176,7 +177,7 @@ export default function MarcaPage() {
   });
 
   const openCreate = () => {
-    if (!ready) return;
+    if (!ready || mutationLock.current) return;
     clearError();
     setNotice("");
     setDialogError("");
@@ -185,7 +186,7 @@ export default function MarcaPage() {
     setEditor({ mode: "create" });
   };
   const openEdit = (asset: BrandAsset) => {
-    if (!ready) return;
+    if (!ready || mutationLock.current) return;
     clearError();
     setNotice("");
     setDialogError("");
@@ -195,112 +196,146 @@ export default function MarcaPage() {
   };
 
   const compensateUpload = async (url: string, persistenceError: string) => {
-    const cleanup = await removeAssetByPublicUrl(url);
-    return cleanup.ok
-      ? persistenceError
-      : `${persistenceError} Además, no se pudo revertir el archivo nuevo: ${cleanup.error}`;
+    try {
+      const cleanup = await removeAssetByPublicUrl(url);
+      return cleanup.ok
+        ? persistenceError
+        : `${persistenceError} Además, no se pudo revertir el archivo nuevo: ${cleanup.error}`;
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "Error inesperado.";
+      return `${persistenceError} Además, no se pudo revertir el archivo nuevo: ${reason}`;
+    }
   };
 
   const saveFont = async () => {
-    if (!editor || pending || !ready) return;
-    clearError();
-    const name = draft.name.trim();
+    if (!editor || mutationLock.current || !ready) return;
+    const operationEditor = editor;
+    const operationDraft = { ...draft };
+    const operationFile = fontFile;
+    const name = operationDraft.name.trim();
     if (!name) {
       setDialogError("Ingresá un nombre visible para la fuente.");
       return;
     }
-    if (editor.mode === "create" && !fontFile) {
+    if (operationEditor.mode === "create" && !operationFile) {
       setDialogError("Seleccioná un archivo de fuente.");
       return;
     }
-    if (fontFile) {
-      const validation = await validateFontFile(fontFile, MAX_FONT_BYTES);
-      if (!validation.ok) {
-        setDialogError(validation.error);
-        return;
-      }
-    }
-
+    mutationLock.current = true;
     setPending(true);
+    clearError();
     setDialogError("");
     setNotice("");
     let uploadedUrl: string | undefined;
     let uploadedFormat: ReturnType<typeof fontFormatFromFileName> = null;
+    let persisted = false;
 
-    if (fontFile) {
-      uploadedFormat = fontFormatFromFileName(fontFile.name);
-      const uploaded = await uploadAsset(fontFile, "brand/fonts");
-      if (!uploaded.ok) {
-        setDialogError(uploaded.error);
-        setPending(false);
+    try {
+      if (operationFile) {
+        const validation = await validateFontFile(operationFile, MAX_FONT_BYTES);
+        if (!validation.ok) {
+          setDialogError(validation.error);
+          return;
+        }
+        uploadedFormat = fontFormatFromFileName(operationFile.name);
+        const uploaded = await uploadAsset(operationFile, "brand/fonts");
+        if (!uploaded.ok) {
+          setDialogError(uploaded.error);
+          return;
+        }
+        uploadedUrl = uploaded.url;
+      }
+
+      if (operationEditor.mode === "create") {
+        const id = `ba${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+        const result = await addAsync({
+          id,
+          kind: "font",
+          name,
+          value: name,
+          role: operationDraft.role.trim(),
+          fileUrl: uploadedUrl,
+          fileFormat: uploadedFormat ?? undefined,
+          storagePath: uploadedUrl ? storagePathFromPublicUrl(uploadedUrl) : undefined,
+        });
+        if (!result.ok) {
+          setDialogError(uploadedUrl ? await compensateUpload(uploadedUrl, result.error) : result.error);
+          uploadedUrl = undefined;
+          return;
+        }
+        persisted = true;
+        setEditor(null);
         return;
       }
-      uploadedUrl = uploaded.url;
-    }
 
-    if (editor.mode === "create") {
-      const id = `ba${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
-      const result = await addAsync({
-        id,
-        kind: "font",
-        name,
-        value: name,
-        role: draft.role.trim(),
-        fileUrl: uploadedUrl,
-        fileFormat: uploadedFormat ?? undefined,
-        storagePath: uploadedUrl ? storagePathFromPublicUrl(uploadedUrl) : undefined,
-      });
+      const previousUrl = operationEditor.asset.fileUrl;
+      const patch: Partial<BrandAsset> = { name, role: operationDraft.role.trim(), value: name };
+      if (uploadedUrl && uploadedFormat) {
+        patch.fileUrl = uploadedUrl;
+        patch.fileFormat = uploadedFormat;
+        patch.storagePath = storagePathFromPublicUrl(uploadedUrl);
+      }
+      const result = await updateAsync(operationEditor.asset.id, patch);
       if (!result.ok) {
         setDialogError(uploadedUrl ? await compensateUpload(uploadedUrl, result.error) : result.error);
-        setPending(false);
+        uploadedUrl = undefined;
         return;
       }
+
+      persisted = true;
       setEditor(null);
+      if (uploadedUrl && previousUrl) {
+        const cleanup = await removeAssetByPublicUrl(previousUrl);
+        if (!cleanup.ok) setNotice(`La fuente se guardó, pero no se pudo limpiar el archivo anterior: ${cleanup.error}`);
+      }
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "Error inesperado.";
+      if (uploadedUrl && !persisted) {
+        setDialogError(await compensateUpload(uploadedUrl, `No se pudo completar la operación: ${reason}`));
+      } else if (persisted) {
+        setNotice(`La fuente se guardó, pero una limpieza posterior falló: ${reason}`);
+      } else {
+        setDialogError(`No se pudo completar la operación: ${reason}`);
+      }
+    } finally {
+      mutationLock.current = false;
       setPending(false);
-      return;
-    }
-
-    const previousUrl = editor.asset.fileUrl;
-    const patch: Partial<BrandAsset> = { name, role: draft.role.trim(), value: name };
-    if (uploadedUrl && uploadedFormat) {
-      patch.fileUrl = uploadedUrl;
-      patch.fileFormat = uploadedFormat;
-      patch.storagePath = storagePathFromPublicUrl(uploadedUrl);
-    }
-    const result = await updateAsync(editor.asset.id, patch);
-    if (!result.ok) {
-      setDialogError(uploadedUrl ? await compensateUpload(uploadedUrl, result.error) : result.error);
-      setPending(false);
-      return;
-    }
-
-    setEditor(null);
-    setPending(false);
-    if (uploadedUrl && previousUrl) {
-      const cleanup = await removeAssetByPublicUrl(previousUrl);
-      if (!cleanup.ok) setNotice(`La fuente se guardó, pero no se pudo limpiar el archivo anterior: ${cleanup.error}`);
     }
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget || pending || !ready) return;
+    if (!deleteTarget || mutationLock.current || !ready) return;
+    mutationLock.current = true;
     clearError();
     setPending(true);
     setDialogError("");
     setNotice("");
     const target = deleteTarget;
-    const result = await removeAsync(target.id);
-    if (!result.ok) {
-      setDialogError(result.error);
+    try {
+      const result = await removeAsync(target.id);
+      if (!result.ok) {
+        setDialogError(result.error);
+        return;
+      }
+      setDeleteTarget(null);
+      if (target.fileUrl) {
+        const cleanup = await removeAssetByPublicUrl(target.fileUrl);
+        if (!cleanup.ok) setNotice(`La fuente se eliminó, pero no se pudo limpiar su archivo: ${cleanup.error}`);
+      }
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "Error inesperado.";
+      setDialogError(`No se pudo completar la eliminación: ${reason}`);
+    } finally {
+      mutationLock.current = false;
       setPending(false);
-      return;
     }
-    setDeleteTarget(null);
-    setPending(false);
-    if (target.fileUrl) {
-      const cleanup = await removeAssetByPublicUrl(target.fileUrl);
-      if (!cleanup.ok) setNotice(`La fuente se eliminó, pero no se pudo limpiar su archivo: ${cleanup.error}`);
-    }
+  };
+
+  const closeEditor = () => {
+    if (!mutationLock.current) setEditor(null);
+  };
+  const closeDelete = () => {
+    if (!mutationLock.current) setDeleteTarget(null);
   };
 
   return (
@@ -345,7 +380,7 @@ export default function MarcaPage() {
         {fonts.map((font, index) => (
           <Reveal key={font.id} delay={(index + 1) * 0.04}>
             <FontCard asset={font} disabled={!ready} onEdit={openEdit} onDelete={(asset) => {
-              if (!ready) return;
+              if (!ready || mutationLock.current) return;
               clearError();
               setDialogError("");
               setNotice("");
@@ -357,20 +392,20 @@ export default function MarcaPage() {
 
       <Modal
         open={editor !== null}
-        onClose={() => { if (!pending) setEditor(null); }}
+        onClose={closeEditor}
         title={editor?.mode === "edit" ? "Editar fuente" : "Agregar fuente"}
         description={editor?.mode === "edit" ? "Podés actualizar los datos o reemplazar el archivo." : "Subí una fuente real de hasta 5 MB."}
         footer={<>
-          <Button type="button" variant="ghost" disabled={pending} onClick={() => setEditor(null)}>Cancelar</Button>
+          <Button type="button" variant="ghost" disabled={pending} onClick={closeEditor}>Cancelar</Button>
           <Button type="button" disabled={pending || !ready} onClick={saveFont}>{pending ? "Guardando…" : editor?.mode === "edit" ? "Guardar cambios" : "Guardar fuente"}</Button>
         </>}
       >
         <div className="space-y-4">
           {dialogError ? <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{dialogError}</p> : null}
-          <Field label="Nombre visible"><Input aria-label="Nombre visible" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Ej: ElaBela Display" /></Field>
-          <Field label="Rol o uso"><Input aria-label="Rol o uso" value={draft.role} onChange={(event) => setDraft((current) => ({ ...current, role: event.target.value }))} placeholder="Ej: Títulos y campañas" /></Field>
+          <Field label="Nombre visible"><Input aria-label="Nombre visible" disabled={pending} value={draft.name} onChange={(event) => { if (!mutationLock.current) setDraft((current) => ({ ...current, name: event.target.value })); }} placeholder="Ej: ElaBela Display" /></Field>
+          <Field label="Rol o uso"><Input aria-label="Rol o uso" disabled={pending} value={draft.role} onChange={(event) => { if (!mutationLock.current) setDraft((current) => ({ ...current, role: event.target.value })); }} placeholder="Ej: Títulos y campañas" /></Field>
           <Field label={editor?.mode === "edit" ? "Reemplazar archivo (opcional)" : "Archivo de fuente"}>
-            <input aria-label="Archivo de fuente" type="file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={(event) => setFontFile(event.target.files?.[0] ?? null)} className="field file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:text-white" />
+            <input aria-label="Archivo de fuente" disabled={pending} type="file" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf" onChange={(event) => { if (!mutationLock.current) setFontFile(event.target.files?.[0] ?? null); }} className="field file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1 file:text-xs file:text-white" />
           </Field>
           <p className="text-[11px] text-[var(--faint)]">Formatos: WOFF2, WOFF, TTF u OTF. Máximo 5 MB.</p>
         </div>
@@ -378,11 +413,11 @@ export default function MarcaPage() {
 
       <Modal
         open={deleteTarget !== null}
-        onClose={() => { if (!pending) setDeleteTarget(null); }}
+        onClose={closeDelete}
         title="Eliminar fuente"
         description={deleteTarget ? `Se eliminará “${deleteTarget.name}” del Manual de Marca.` : undefined}
         footer={<>
-          <Button type="button" variant="ghost" disabled={pending} onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+          <Button type="button" variant="ghost" disabled={pending} onClick={closeDelete}>Cancelar</Button>
           <Button type="button" disabled={pending || !ready} className="bg-red-400 text-black hover:bg-red-300" onClick={confirmDelete}>{pending ? "Eliminando…" : "Sí, eliminar"}</Button>
         </>}
       >

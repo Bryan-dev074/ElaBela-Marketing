@@ -1,6 +1,6 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
 
 vi.stubGlobal("React", React);
 vi.stubGlobal("IntersectionObserver", class {
@@ -78,6 +78,7 @@ describe("MarcaPage brand fonts", () => {
   let loadFont: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    Reflect.deleteProperty(globalThis, "FontFace");
     mocks.addAsync.mockReset().mockResolvedValue({ ok: true });
     mocks.updateAsync.mockReset().mockResolvedValue({ ok: true });
     mocks.removeAsync.mockReset().mockResolvedValue({ ok: true });
@@ -92,6 +93,10 @@ describe("MarcaPage brand fonts", () => {
       configurable: true,
       value: { load: loadFont },
     });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, "FontFace");
   });
 
   it("creates a font from a required uploaded file with display name and role", async () => {
@@ -146,6 +151,88 @@ describe("MarcaPage brand fonts", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("fake.woff2 no contiene una firma binaria WOFF2 válida.");
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
     expect(mocks.addAsync).not.toHaveBeenCalled();
+
+    fireEvent.change(fileInput!, { target: { files: [woff2File("valid.woff2")] } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar fuente" }));
+    await waitFor(() => expect(mocks.addAsync).toHaveBeenCalledTimes(1));
+  });
+
+  it("locks create synchronously through deferred decode, upload, and persistence", async () => {
+    let resolveDecode!: (value: unknown) => void;
+    const decode = new Promise((resolve) => { resolveDecode = resolve; });
+    const load = vi.fn(() => decode);
+    const FontFaceMock = vi.fn(function FontFaceMock() { return { load }; });
+    Object.defineProperty(globalThis, "FontFace", { configurable: true, value: FontFaceMock });
+
+    const { container } = render(<MarcaPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Agregar fuente" }));
+    const dialog = screen.getByRole("dialog", { name: "Agregar fuente" });
+    const name = within(dialog).getByLabelText("Nombre visible");
+    const file = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    fireEvent.change(name, { target: { value: "Fuente bloqueada" } });
+    fireEvent.change(file, { target: { files: [woff2File()] } });
+    const save = within(dialog).getByRole("button", { name: "Guardar fuente" });
+
+    act(() => {
+      save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      within(dialog).getByRole("button", { name: "Cerrar" }).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      within(dialog).getByRole("button", { name: "Cancelar" }).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    fireEvent.change(name, { target: { value: "Nombre alterado" } });
+    fireEvent.change(file, { target: { files: [woff2File("altered.woff2")] } });
+
+    expect(screen.getByRole("dialog", { name: "Agregar fuente" })).toBeInTheDocument();
+    expect(name).toBeDisabled();
+    expect(file).toBeDisabled();
+    expect(name).toHaveValue("Fuente bloqueada");
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    expect(mocks.uploadAsset).not.toHaveBeenCalled();
+
+    resolveDecode({});
+    await waitFor(() => expect(mocks.uploadAsset).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.addAsync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Agregar fuente" })).not.toBeInTheDocument());
+  });
+
+  it("releases the synchronous lock after an unexpected upload exception so retry can succeed", async () => {
+    mocks.uploadAsset
+      .mockRejectedValueOnce(new Error("network exploded"))
+      .mockResolvedValueOnce({ ok: true, url: "https://example.supabase.co/storage/v1/object/public/elabela-assets/brand/fonts/retry.woff2" });
+    const { container } = render(<MarcaPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Agregar fuente" }));
+    const dialog = screen.getByRole("dialog", { name: "Agregar fuente" });
+    fireEvent.change(within(dialog).getByLabelText("Nombre visible"), { target: { value: "Retry Sans" } });
+    fireEvent.change(container.querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [woff2File()] } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar fuente" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("No se pudo completar la operación: network exploded");
+    expect(within(dialog).getByRole("button", { name: "Guardar fuente" })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar fuente" }));
+    await waitFor(() => expect(mocks.addAsync).toHaveBeenCalledTimes(1));
+    expect(mocks.uploadAsset).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the same synchronous lock for replacement decode", async () => {
+    let resolveDecode!: (value: unknown) => void;
+    const decode = new Promise((resolve) => { resolveDecode = resolve; });
+    const load = vi.fn(() => decode);
+    Object.defineProperty(globalThis, "FontFace", { configurable: true, value: vi.fn(function FontFaceMock() { return { load }; }) });
+    const { container } = render(<MarcaPage />);
+    const card = screen.getByRole("article", { name: "Fuente ElaBela Serif" });
+    fireEvent.click(within(card).getByRole("button", { name: "Editar ElaBela Serif" }));
+    const dialog = screen.getByRole("dialog", { name: "Editar fuente" });
+    fireEvent.change(container.querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [woff2File("replace.woff2")] } });
+    const save = within(dialog).getByRole("button", { name: "Guardar cambios" });
+
+    act(() => {
+      save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      save.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+    resolveDecode({});
+    await waitFor(() => expect(mocks.updateAsync).toHaveBeenCalledTimes(1));
+    expect(mocks.uploadAsset).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a failed runtime font on the UI fallback and removes its descriptor on unmount", async () => {
@@ -221,6 +308,20 @@ describe("MarcaPage brand fonts", () => {
     expect(mocks.removeAssetByPublicUrl).toHaveBeenCalledWith(expect.stringContaining("/new.woff2"));
     expect(mocks.removeAssetByPublicUrl).not.toHaveBeenCalledWith(expect.stringContaining("/old.woff2"));
     expect(mocks.updateAsync.mock.invocationCallOrder[0]).toBeLessThan(mocks.removeAssetByPublicUrl.mock.invocationCallOrder[0]);
+  });
+
+  it("does not retry compensation when cleanup throws", async () => {
+    mocks.updateAsync.mockResolvedValueOnce({ ok: false, error: "No se pudo guardar." });
+    mocks.removeAssetByPublicUrl.mockRejectedValueOnce(new Error("cleanup exploded"));
+    const { container } = render(<MarcaPage />);
+    const card = screen.getByRole("article", { name: "Fuente ElaBela Serif" });
+    fireEvent.click(within(card).getByRole("button", { name: "Editar ElaBela Serif" }));
+    const dialog = screen.getByRole("dialog", { name: "Editar fuente" });
+    fireEvent.change(container.querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [woff2File("new.woff2")] } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar cambios" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("No se pudo guardar. Además, no se pudo revertir el archivo nuevo: cleanup exploded");
+    expect(mocks.removeAssetByPublicUrl).toHaveBeenCalledTimes(1);
   });
 
   it("removes the old upload only after a replacement persisted and reports cleanup failure", async () => {
