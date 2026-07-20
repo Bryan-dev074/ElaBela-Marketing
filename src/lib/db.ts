@@ -355,7 +355,7 @@ export function useDailyTaskLogs(activityDate: string) {
 }
 
 const stringArray = (value: unknown): string[] => Array.isArray(value)
-  ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+  ? [...new Set(value.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean))]
   : [];
 
 export function projectFromRow(r: Record<string, unknown>): Project {
@@ -385,7 +385,7 @@ export function projectFromRow(r: Record<string, unknown>): Project {
 export function projectToRow(p: Project): Record<string, unknown> {
   return {
     id: p.id, name: p.name, owner: p.owner,
-    responsible_usernames: p.responsibleUsernames,
+    responsible_usernames: stringArray(p.responsibleUsernames),
     project_type: p.projectType, priority: p.priority,
     objective: p.objective ?? null, status: p.status,
     created_at: p.createdAt, start_date: p.startDate ?? null, due_date: p.due ?? null,

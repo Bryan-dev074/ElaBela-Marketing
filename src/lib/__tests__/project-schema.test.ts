@@ -15,4 +15,8 @@ describe("expanded project schema", () => {
     expect(schema).toContain("projects_completed_at_idx");
     expect(schema).toContain("where status = 'done'");
   });
+
+  it("grants projects writes to authenticated users", () => {
+    expect(schema).toContain("grant select, insert, update, delete on table public.projects to authenticated;");
+  });
 });

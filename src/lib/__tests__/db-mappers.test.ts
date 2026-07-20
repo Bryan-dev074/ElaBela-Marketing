@@ -45,6 +45,28 @@ describe("project mapper", () => {
     expect(mapped.completedAt).toBeUndefined();
     expect(mapped.completedResponsibleUsernames).toBeUndefined();
   });
+
+  it("deduplicates and trims additional responsibles when hydrating projects", () => {
+    const mapped = projectFromRow({
+      id: "p1", name: "Glow", owner: "bryan", status: "todo", created_at: "2026-07-01",
+      responsible_usernames: [" cielo ", "cielo", "", "  ", "elizabeth", "elizabeth"],
+      content_mode: "steps", steps: [],
+    });
+
+    expect(mapped.responsibleUsernames).toEqual(["cielo", "elizabeth"]);
+  });
+
+  it("deduplicates and trims additional responsibles when serializing projects", () => {
+    const project = projectFromRow({
+      id: "p1", name: "Glow", owner: "bryan", status: "todo", created_at: "2026-07-01",
+      content_mode: "steps", steps: [],
+    });
+
+    expect(projectToRow({
+      ...project,
+      responsibleUsernames: [" cielo ", "cielo", "", "  ", "elizabeth", "elizabeth"],
+    })).toMatchObject({ responsible_usernames: ["cielo", "elizabeth"] });
+  });
 });
 
 describe("publicationFromRow", () => {

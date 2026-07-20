@@ -118,6 +118,7 @@ exception when duplicate_object then null; end $$;
 create index if not exists projects_completed_at_idx
   on public.projects (completed_at desc) where status = 'done';
 alter table public.projects enable row level security;
+grant select, insert, update, delete on table public.projects to authenticated;
 drop policy if exists projects_all on public.projects;
 create policy projects_all on public.projects for all to authenticated using (true) with check (true);
 
