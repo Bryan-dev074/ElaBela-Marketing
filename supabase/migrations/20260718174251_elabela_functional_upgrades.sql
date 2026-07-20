@@ -196,6 +196,11 @@ create table if not exists public.credential_categories (
 alter table public.credential_categories enable row level security;
 alter table public.credentials add column if not exists category_id text references public.credential_categories(id) on delete set null;
 
+update public.credential_categories
+set name = btrim(name)
+where name is distinct from btrim(name)
+  and char_length(btrim(name)) > 0;
+
 do $$
 begin
   if not exists (
@@ -205,6 +210,18 @@ begin
   ) then
     alter table public.credential_categories
       add constraint credential_categories_name_nonblank check (char_length(btrim(name)) > 0);
+  end if;
+end
+$$;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.credential_categories'::regclass
+      and conname = 'credential_categories_name_trimmed'
+  ) then
+    alter table public.credential_categories
+      add constraint credential_categories_name_trimmed check (name = btrim(name));
   end if;
 end
 $$;
@@ -229,7 +246,7 @@ begin
   select * into category
   from public.credential_categories
   where id = new.category_id
-  for key share;
+  for share;
   if not found then
     raise exception 'La categoría de credencial no existe o no es compatible.' using errcode = '23514';
   end if;
@@ -276,6 +293,29 @@ drop trigger if exists enforce_category_credential_compatibility on public.crede
 create trigger enforce_category_credential_compatibility
 before update of scope, owner_id on public.credential_categories
 for each row execute function public.enforce_category_credential_compatibility();
+
+create or replace function public.prevent_nonempty_credential_category_delete()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if exists (
+    select 1
+    from public.credentials
+    where category_id = old.id
+  ) then
+    raise exception 'La categoría no está vacía.' using errcode = '23503';
+  end if;
+  return old;
+end;
+$$;
+
+drop trigger if exists prevent_nonempty_credential_category_delete on public.credential_categories;
+create trigger prevent_nonempty_credential_category_delete
+before delete on public.credential_categories
+for each row execute function public.prevent_nonempty_credential_category_delete();
 
 create or replace function public.delete_empty_credential_category(p_category_id text)
 returns void
