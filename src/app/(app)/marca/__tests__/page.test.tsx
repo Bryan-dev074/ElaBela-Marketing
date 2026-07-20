@@ -367,6 +367,22 @@ describe("MarcaPage brand fonts", () => {
     expect(mocks.removeAsync.mock.invocationCallOrder[0]).toBeLessThan(mocks.removeAssetByPublicUrl.mock.invocationCallOrder[0]);
   });
 
+  it("closes delete and reports a thrown storage cleanup as a non-retry notice", async () => {
+    mocks.removeAssetByPublicUrl.mockRejectedValueOnce(new Error("Storage explotó."));
+    render(<MarcaPage />);
+    const card = screen.getByRole("article", { name: "Fuente ElaBela Serif" });
+    fireEvent.click(within(card).getByRole("button", { name: "Eliminar ElaBela Serif" }));
+    const dialog = screen.getByRole("dialog", { name: "Eliminar fuente" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, eliminar" }));
+
+    const warning = await screen.findByText("La fuente se eliminó, pero no se pudo limpiar su archivo: Storage explotó.");
+    expect(warning).toHaveAttribute("role", "status");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Eliminar fuente" })).not.toBeInTheDocument());
+    expect(screen.queryByText(/No se pudo completar la eliminación/)).not.toBeInTheDocument();
+    expect(mocks.removeAsync).toHaveBeenCalledTimes(1);
+    expect(mocks.removeAsync.mock.invocationCallOrder[0]).toBeLessThan(mocks.removeAssetByPublicUrl.mock.invocationCallOrder[0]);
+  });
+
   it("clears a stale collection error when a failed edit retry succeeds", async () => {
     mocks.updateAsync
       .mockResolvedValueOnce({ ok: false, error: "Fallo transitorio." })

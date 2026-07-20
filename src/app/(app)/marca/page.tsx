@@ -311,12 +311,14 @@ export default function MarcaPage() {
     setDialogError("");
     setNotice("");
     const target = deleteTarget;
+    let rowDeleted = false;
     try {
       const result = await removeAsync(target.id);
       if (!result.ok) {
         setDialogError(result.error);
         return;
       }
+      rowDeleted = true;
       setDeleteTarget(null);
       if (target.fileUrl) {
         const cleanup = await removeAssetByPublicUrl(target.fileUrl);
@@ -324,7 +326,11 @@ export default function MarcaPage() {
       }
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : "Error inesperado.";
-      setDialogError(`No se pudo completar la eliminación: ${reason}`);
+      if (rowDeleted) {
+        setNotice(`La fuente se eliminó, pero no se pudo limpiar su archivo: ${reason}`);
+      } else {
+        setDialogError(`No se pudo completar la eliminación: ${reason}`);
+      }
     } finally {
       mutationLock.current = false;
       setPending(false);
