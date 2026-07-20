@@ -9,7 +9,8 @@ describe.each([["canonical schema", schema], ["pending migration", migration]])(
     expect(sql).toMatch(/alter table public\.daily_tasks alter column assignee drop not null/i);
     expect(sql).toMatch(/create table if not exists public\.daily_task_logs[\s\S]*unique \(task_id, activity_date\)/i);
     expect(sql).toMatch(/assignee_snapshot text/i);
-    expect(sql).toMatch(/completed_by uuid references public\.profiles\(id\)/i);
+    expect(sql).toMatch(/completed_by uuid/i);
+    expect(sql).toMatch(/completed_by uuid references public\.profiles\(id\)|daily_task_logs_completed_by_fkey[\s\S]*foreign key \(completed_by\) references public\.profiles\(id\)[\s\S]*on delete set null/i);
     expect(sql).toMatch(/updated_at timestamptz not null/i);
     const logsBlock = sql.match(/create table if not exists public\.daily_task_logs \([\s\S]*?\n\);/i)?.[0] ?? "";
     expect(logsBlock).not.toMatch(/task_id text[^,]*references public\.daily_tasks/i);

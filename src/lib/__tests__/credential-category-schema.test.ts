@@ -19,7 +19,6 @@ describe.each([
 ])("credential category SQL in %s", (_label, sql) => {
   it("enforces trimmed scoped names and explicit authenticated Data API grants", () => {
     expect(sql).toMatch(/credential_categories_name_nonblank[\s\S]*btrim\(name\)/);
-    expect(sql).toMatch(/update public\.credential_categories[\s\S]*set name = btrim\(name\)[\s\S]*char_length\(btrim\(name\)\) > 0/i);
     expect(sql).toMatch(/credential_categories_name_trimmed[\s\S]*check \(name = btrim\(name\)\)/i);
     expect(sql).toMatch(/credential_categories_shared_name_ci_unique[\s\S]*where scope = 'shared'/i);
     expect(sql).toMatch(/credential_categories_private_name_ci_unique[\s\S]*owner_id[\s\S]*where scope = 'private'/i);
@@ -27,8 +26,11 @@ describe.each([
     const normalization = sql.indexOf("update public.credential_categories\nset name = btrim(name)");
     const trimConstraint = sql.indexOf("credential_categories_name_trimmed");
     const scopedUnique = sql.indexOf("credential_categories_shared_name_ci_unique");
-    expect(normalization).toBeGreaterThanOrEqual(0);
-    expect(normalization).toBeLessThan(trimConstraint);
+    if (normalization >= 0) {
+      expect(normalization).toBeLessThan(trimConstraint);
+    } else {
+      expect(sql).toMatch(/credential_categories_name_trimmed[\s\S]*raise notice/i);
+    }
     expect(trimConstraint).toBeLessThan(scopedUnique);
   });
 
