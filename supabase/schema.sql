@@ -99,6 +99,24 @@ create table if not exists public.projects (
 alter table public.projects add column if not exists archived boolean not null default false;
 alter table public.projects add column if not exists content_mode text not null default 'steps';
 alter table public.projects add column if not exists note text;
+alter table public.projects add column if not exists responsible_usernames text[] not null default '{}';
+alter table public.projects add column if not exists completed_responsible_usernames text[];
+alter table public.projects add column if not exists project_type text not null default 'other';
+alter table public.projects add column if not exists priority text not null default 'normal';
+alter table public.projects add column if not exists objective text;
+alter table public.projects add column if not exists start_date date;
+alter table public.projects add column if not exists completed_at timestamptz;
+alter table public.projects add column if not exists completed_by uuid references public.profiles(id) on delete set null;
+do $$ begin
+  alter table public.projects add constraint projects_project_type_check
+    check (project_type in ('campaign','launch','content','brand-design','web-ecommerce','event','crm','operations','other'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.projects add constraint projects_priority_check
+    check (priority in ('low','normal','high','urgent'));
+exception when duplicate_object then null; end $$;
+create index if not exists projects_completed_at_idx
+  on public.projects (completed_at desc) where status = 'done';
 alter table public.projects enable row level security;
 drop policy if exists projects_all on public.projects;
 create policy projects_all on public.projects for all to authenticated using (true) with check (true);
@@ -699,9 +717,6 @@ create index if not exists daily_task_logs_activity_date_idx
 create index if not exists daily_task_logs_completed_at_idx
   on public.daily_task_logs (completed_at) where state = 'done';
 alter table public.daily_task_logs enable row level security;
-
-alter table public.projects add column if not exists completed_at timestamptz;
-alter table public.projects add column if not exists completed_by uuid references public.profiles(id) on delete set null;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (

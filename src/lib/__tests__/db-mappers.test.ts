@@ -6,6 +6,8 @@ import {
   credentialFromRow,
   credentialToRow,
   postTypeToRow,
+  projectFromRow,
+  projectToRow,
   publicationFromRow,
   publicationToRow,
   toolCategoryFromRow,
@@ -13,6 +15,37 @@ import {
   toolItemFromRow,
   toolItemToRow,
 } from "@/lib/db";
+
+describe("project mapper", () => {
+  it("maps expanded project rows and preserves completion snapshots", () => {
+    const mapped = projectFromRow({
+      id: "p1", name: "Glow", owner: "bryan", responsible_usernames: ["cielo"],
+      project_type: "campaign", priority: "high", objective: "Relanzar",
+      status: "done", created_at: "2026-07-01", start_date: "2026-07-02", due_date: "2026-07-20",
+      archived: false, completed_at: "2026-07-19T20:00:00Z", completed_by: "00000000-0000-4000-8000-000000000001",
+      completed_responsible_usernames: ["bryan", "cielo"], content_mode: "note", steps: [], note: "# Glow",
+    });
+    expect(mapped).toMatchObject({
+      responsibleUsernames: ["cielo"], projectType: "campaign", priority: "high",
+      objective: "Relanzar", startDate: "2026-07-02", completedBy: "00000000-0000-4000-8000-000000000001",
+      completedResponsibleUsernames: ["bryan", "cielo"],
+    });
+    expect(projectToRow(mapped)).toMatchObject({
+      responsible_usernames: ["cielo"], project_type: "campaign", priority: "high",
+      completed_responsible_usernames: ["bryan", "cielo"],
+    });
+  });
+
+  it("applies safe defaults to legacy project rows without fabricating completion data", () => {
+    const mapped = projectFromRow({
+      id: "legacy", name: "Anterior", owner: "bryan", status: "done",
+      created_at: "2026-06-01", archived: true, content_mode: "steps", steps: [],
+    });
+    expect(mapped).toMatchObject({ responsibleUsernames: [], projectType: "other", priority: "normal" });
+    expect(mapped.completedAt).toBeUndefined();
+    expect(mapped.completedResponsibleUsernames).toBeUndefined();
+  });
+});
 
 describe("publicationFromRow", () => {
   it("falls back to the legacy example image when no image array exists", () => {

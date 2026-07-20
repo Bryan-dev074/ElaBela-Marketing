@@ -354,14 +354,52 @@ export function useDailyTaskLogs(activityDate: string) {
   };
 }
 
-export const useProjects = () =>
-  useCollection<Project>({
-    table: "projects",
-    seed: PROJECTS,
-    order: { col: "created_at", asc: false },
-    fromRow: (r) => ({ id: r.id as string, name: r.name as string, owner: r.owner as string, status: r.status as Project["status"], createdAt: (r.created_at as string)?.slice(0, 10), due: (r.due_date as string) || undefined, archived: !!r.archived, contentMode: (r.content_mode as Project["contentMode"]) || "steps", steps: (r.steps as Project["steps"]) || [], note: (r.note as string) || undefined }),
-    toRow: (p) => ({ id: p.id, name: p.name, owner: p.owner, status: p.status, created_at: p.createdAt, due_date: nn(p.due), archived: !!p.archived, content_mode: p.contentMode, steps: p.steps, note: p.note ?? null }),
-  });
+const stringArray = (value: unknown): string[] => Array.isArray(value)
+  ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+  : [];
+
+export function projectFromRow(r: Record<string, unknown>): Project {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    owner: (r.owner as string) || "",
+    responsibleUsernames: stringArray(r.responsible_usernames),
+    projectType: (r.project_type as Project["projectType"]) || "other",
+    priority: (r.priority as Project["priority"]) || "normal",
+    objective: (r.objective as string) || undefined,
+    status: r.status as Project["status"],
+    createdAt: (r.created_at as string)?.slice(0, 10),
+    startDate: (r.start_date as string) || undefined,
+    due: (r.due_date as string) || undefined,
+    archived: !!r.archived,
+    completedAt: (r.completed_at as string) || undefined,
+    completedBy: (r.completed_by as string) || undefined,
+    completedResponsibleUsernames: Array.isArray(r.completed_responsible_usernames)
+      ? stringArray(r.completed_responsible_usernames) : undefined,
+    contentMode: (r.content_mode as Project["contentMode"]) || "steps",
+    steps: (r.steps as Project["steps"]) || [],
+    note: (r.note as string) || undefined,
+  };
+}
+
+export function projectToRow(p: Project): Record<string, unknown> {
+  return {
+    id: p.id, name: p.name, owner: p.owner,
+    responsible_usernames: p.responsibleUsernames,
+    project_type: p.projectType, priority: p.priority,
+    objective: p.objective ?? null, status: p.status,
+    created_at: p.createdAt, start_date: p.startDate ?? null, due_date: p.due ?? null,
+    archived: !!p.archived, completed_at: p.completedAt ?? null,
+    completed_by: p.completedBy ?? null,
+    completed_responsible_usernames: p.completedResponsibleUsernames ?? null,
+    content_mode: p.contentMode, steps: p.steps, note: p.note ?? null,
+  };
+}
+
+export const useProjects = () => useCollection<Project>({
+  table: "projects", seed: PROJECTS, order: { col: "created_at", asc: false },
+  fromRow: projectFromRow, toRow: projectToRow,
+});
 
 export const useGuiones = () =>
   useCollection<Guion>({
