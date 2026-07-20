@@ -1,4 +1,4 @@
-import { postTypeToRow, publicationFromRow, publicationToRow } from "@/lib/db";
+import { postTypeToRow, publicationFromRow, publicationToRow, toolItemFromRow, toolItemToRow } from "@/lib/db";
 
 describe("publicationFromRow", () => {
   it("falls back to the legacy example image when no image array exists", () => {
@@ -46,5 +46,27 @@ describe("publicationFromRow", () => {
       guide: "# Guía",
       tool_ids: ["tool-1"],
     });
+  });
+
+  it("normalizes legacy GEMS tools into the current IA category", () => {
+    expect(toolItemFromRow({
+      id: "gem-1",
+      category: "gems",
+      kind: "link",
+      title: "GEM",
+    })).toMatchObject({ category: "ia", categoryId: "ia" });
+  });
+
+  it("prefers a migrated category ID and writes its compatible pair", () => {
+    const item = toolItemFromRow({
+      id: "tool-1",
+      category: "gems",
+      category_id: "apps",
+      kind: "link",
+      title: "App",
+    });
+
+    expect(item).toMatchObject({ category: "apps", categoryId: "apps" });
+    expect(toolItemToRow(item)).toMatchObject({ category: "apps", category_id: "apps" });
   });
 });

@@ -70,6 +70,40 @@ describe("useCollection async mutations", () => {
     expect(result.current.error).toBe("first failed");
   });
 
+  it("keeps the successful item when overlapping duplicate-ID adds resolve differently", async () => {
+    const first = deferred<{ error: { message: string } }>();
+    const second = deferred<{ error: null }>();
+    mocks.insert.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    const { result } = renderHook(() => useCollection<Row>({
+      table: "rows",
+      seed: [{ id: "base", name: "Base" }],
+      fromRow: (row) => row as unknown as Row,
+      toRow: (row) => row,
+    }));
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    let firstResult!: Promise<unknown>;
+    let secondResult!: Promise<unknown>;
+    act(() => {
+      firstResult = result.current.addAsync({ id: "duplicate", name: "Failed copy" });
+      secondResult = result.current.addAsync({ id: "duplicate", name: "Successful copy" });
+    });
+
+    await act(async () => {
+      second.resolve({ error: null });
+      await secondResult;
+      first.resolve({ error: { message: "duplicate failed" } });
+      await firstResult;
+    });
+
+    expect(result.current.items).toEqual([
+      { id: "duplicate", name: "Successful copy" },
+      { id: "base", name: "Base" },
+    ]);
+  });
+
   it("uses a caller-provided setItems value as the base for the next mutation", async () => {
     mocks.insert.mockResolvedValue({ error: null });
 

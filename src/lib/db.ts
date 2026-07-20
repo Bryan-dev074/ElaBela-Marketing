@@ -126,10 +126,19 @@ export function useCollection<T extends object>(cfg: {
   const addAsync = async (item: T): Promise<CollectionMutationResult> => {
     const id = idOf(item);
     const version = startMutation(id);
-    setCurrentItems((previous) => [item, ...previous]);
+    const previous = itemsRef.current;
+    const previousItem = previous.find((currentItem) => idOf(currentItem) === id);
+    const previousIndex = previous.findIndex((currentItem) => idOf(currentItem) === id);
+    setCurrentItems([item, ...previous.filter((currentItem) => idOf(currentItem) !== id)]);
     const { error: mutationError } = await supabase.from(cfg.table).insert(cfg.toRow(item));
     if (mutationError) {
-      if (isLatestMutation(id, version)) setCurrentItems((current) => current.filter((currentItem) => idOf(currentItem) !== id));
+      if (isLatestMutation(id, version)) {
+        setCurrentItems((current) => previousItem
+          ? current.some((currentItem) => idOf(currentItem) === id)
+            ? current.map((currentItem) => (idOf(currentItem) === id ? previousItem : currentItem))
+            : [...current.slice(0, previousIndex), previousItem, ...current.slice(previousIndex)]
+          : current.filter((currentItem) => idOf(currentItem) !== id));
+      }
       setError(mutationError.message);
       return { ok: false, error: mutationError.message };
     }
@@ -273,15 +282,73 @@ export const useStoryConfig = () =>
     toRow: (s) => ({ platform: s.platform, icon: s.icon, min: s.min, max: s.max, schedules: s.schedules, done: s.done, done_date: s.doneDate ?? null, assignee: s.assignee }),
   });
 
-export interface ToolItem { id: string; category: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string; steps: string }
-const TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i) => ({ id: `${c.id}-${i}`, category: c.id, kind: c.kind, title: it.label, note: it.note ?? "", href: it.href ?? "", image: "", icon: "", steps: "" })));
+export interface ToolItem { id: string; category: string; categoryId?: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string; steps: string }
+
+function normalizedToolCategoryId(category: string) {
+  if (category === "gems") return "ia";
+  if (category === "links") return "redes-sociales";
+  return category;
+}
+
+function currentToolCategory(categoryId: string) {
+  return categoryId === "redes-sociales" ? "links" : categoryId;
+}
+
+export function toolItemFromRow(r: Record<string, unknown>): ToolItem {
+  const legacyCategory = typeof r.category === "string" ? r.category : "";
+  const categoryId = typeof r.category_id === "string" && r.category_id
+    ? r.category_id
+    : normalizedToolCategoryId(legacyCategory);
+
+  return {
+    id: r.id as string,
+    category: currentToolCategory(categoryId),
+    categoryId,
+    kind: (r.kind as "prompt" | "link") || "link",
+    title: r.title as string,
+    note: (r.note as string) || "",
+    href: (r.href as string) || "",
+    image: (r.image as string) || "",
+    icon: (r.icon as string) || "",
+    steps: (r.steps as string) || "",
+  };
+}
+
+export function toolItemToRow(t: ToolItem): Record<string, unknown> {
+  const categoryId = t.categoryId ?? normalizedToolCategoryId(t.category);
+  return {
+    id: t.id,
+    category: currentToolCategory(categoryId),
+    category_id: categoryId,
+    kind: t.kind,
+    title: t.title,
+    note: t.note ?? null,
+    href: t.href ?? null,
+    image: t.image ?? null,
+    icon: t.icon || null,
+    steps: t.steps || null,
+  };
+}
+
+const TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i) => ({
+  id: `${c.id}-${i}`,
+  category: currentToolCategory(normalizedToolCategoryId(c.id)),
+  categoryId: normalizedToolCategoryId(c.id),
+  kind: c.kind,
+  title: it.label,
+  note: it.note ?? "",
+  href: it.href ?? "",
+  image: "",
+  icon: "",
+  steps: "",
+})));
 export const useToolItems = () =>
   useCollection<ToolItem>({
     table: "tool_items",
     seed: TOOL_SEED,
     order: { col: "created_at" },
-    fromRow: (r) => ({ id: r.id as string, category: r.category as string, kind: (r.kind as "prompt" | "link") || "link", title: r.title as string, note: (r.note as string) || "", href: (r.href as string) || "", image: (r.image as string) || "", icon: (r.icon as string) || "", steps: (r.steps as string) || "" }),
-    toRow: (t) => ({ id: t.id, category: t.category, kind: t.kind, title: t.title, note: t.note ?? null, href: t.href ?? null, image: t.image ?? null, icon: t.icon || null, steps: t.steps || null }),
+    fromRow: toolItemFromRow,
+    toRow: toolItemToRow,
   });
 
 export interface CalEventRow { id: string; date: string; kind: "tarea" | "proyecto"; title: string; owner: string }
