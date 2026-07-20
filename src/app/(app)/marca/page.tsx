@@ -11,7 +11,7 @@ import {
   storagePathFromPublicUrl,
 } from "@/lib/brand";
 import { type BrandAsset, useBrandAssets } from "@/lib/db";
-import { removeAssetByPublicUrl, uploadAsset, validateAssetFile } from "@/lib/storage";
+import { removeAssetByPublicUrl, uploadAsset, validateFontFile } from "@/lib/storage";
 
 interface Swatch { name: string; role: string; hex: string }
 type FontLoadState = "legacy" | "loading" | "loaded" | "error";
@@ -39,9 +39,16 @@ function useRuntimeBrandFont(asset: BrandAsset) {
     style.textContent = rule;
     document.head.appendChild(style);
 
-    const load = document.fonts?.load(`1em "${brandFontFamily(asset.id)}"`) ?? Promise.resolve([]);
-    void load.then(
-      () => { if (active) setState("loaded"); },
+    const fontSet = document.fonts;
+    if (!fontSet?.load) {
+      setState("error");
+      return () => {
+        active = false;
+        style.remove();
+      };
+    }
+    void Promise.resolve().then(() => fontSet.load(`1em "${brandFontFamily(asset.id)}"`)).then(
+      (matches) => { if (active) setState(matches.length > 0 ? "loaded" : "error"); },
       () => { if (active) setState("error"); },
     );
 
@@ -58,10 +65,12 @@ function FontCard({
   asset,
   onEdit,
   onDelete,
+  disabled,
 }: {
   asset: BrandAsset;
   onEdit: (asset: BrandAsset) => void;
   onDelete: (asset: BrandAsset) => void;
+  disabled: boolean;
 }) {
   const { family, state } = useRuntimeBrandFont(asset);
   const [sample, setSample] = useState(DEFAULT_SAMPLE);
@@ -79,8 +88,8 @@ function FontCard({
           >
             {sample || "Escribí una muestra"}
           </p>
-          {state === "loading" ? <p className="mt-2 text-[11px] text-[var(--faint)]">Cargando archivo de fuente…</p> : null}
-          {state === "error" ? <p className="mt-2 text-[11px] text-amber-300">No se pudo cargar; se muestra la fuente de interfaz.</p> : null}
+          {state === "loading" ? <p role="status" className="mt-2 text-[11px] text-[var(--faint)]">Cargando archivo de fuente…</p> : null}
+          {state === "error" ? <p role="alert" className="mt-2 text-[11px] text-amber-300">No se pudo cargar; se muestra la fuente de interfaz.</p> : null}
           {state === "legacy" ? <p className="mt-2 text-[11px] text-amber-300">Sin archivo cargado (registro heredado).</p> : null}
         </div>
 
@@ -111,8 +120,8 @@ function FontCard({
               </p>
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="ghost" className="px-3 py-2 text-xs" aria-label={`Editar ${asset.name}`} onClick={() => onEdit(asset)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
-              <Button type="button" variant="ghost" className="border-red-400/25 px-3 py-2 text-xs text-red-300 hover:border-red-400/50" aria-label={`Eliminar ${asset.name}`} onClick={() => onDelete(asset)}><Trash2 className="h-3.5 w-3.5" /> Eliminar</Button>
+              <Button type="button" variant="ghost" disabled={disabled} className="px-3 py-2 text-xs" aria-label={`Editar ${asset.name}`} onClick={() => onEdit(asset)}><Pencil className="h-3.5 w-3.5" /> Editar</Button>
+              <Button type="button" variant="ghost" disabled={disabled} className="border-red-400/25 px-3 py-2 text-xs text-red-300 hover:border-red-400/50" aria-label={`Eliminar ${asset.name}`} onClick={() => onDelete(asset)}><Trash2 className="h-3.5 w-3.5" /> Eliminar</Button>
             </div>
           </div>
         </div>
@@ -139,7 +148,7 @@ function InterfaceFontCard() {
 }
 
 export default function MarcaPage() {
-  const { items: assets, add, addAsync, updateAsync, removeAsync, error: collectionError, clearError } = useBrandAssets();
+  const { items: assets, add, addAsync, updateAsync, removeAsync, error: collectionError, clearError, ready } = useBrandAssets();
   const [copied, setCopied] = useState<string | null>(null);
   const [newColor, setNewColor] = useState({ name: "", hex: "#d6ab99" });
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -157,7 +166,7 @@ export default function MarcaPage() {
   const fonts = assets.filter((asset) => asset.kind === "font");
 
   const addColor = () => {
-    if (!newColor.name.trim()) return;
+    if (!ready || !newColor.name.trim()) return;
     add({ id: `ba${Date.now()}`, kind: "color", name: newColor.name.trim(), value: newColor.hex, role: "Nuevo" });
     setNewColor({ name: "", hex: "#d6ab99" });
   };
@@ -167,6 +176,7 @@ export default function MarcaPage() {
   });
 
   const openCreate = () => {
+    if (!ready) return;
     clearError();
     setNotice("");
     setDialogError("");
@@ -175,6 +185,7 @@ export default function MarcaPage() {
     setEditor({ mode: "create" });
   };
   const openEdit = (asset: BrandAsset) => {
+    if (!ready) return;
     clearError();
     setNotice("");
     setDialogError("");
@@ -191,7 +202,8 @@ export default function MarcaPage() {
   };
 
   const saveFont = async () => {
-    if (!editor || pending) return;
+    if (!editor || pending || !ready) return;
+    clearError();
     const name = draft.name.trim();
     if (!name) {
       setDialogError("Ingresá un nombre visible para la fuente.");
@@ -202,7 +214,7 @@ export default function MarcaPage() {
       return;
     }
     if (fontFile) {
-      const validation = validateAssetFile(fontFile, { kind: "font", maxBytes: MAX_FONT_BYTES });
+      const validation = await validateFontFile(fontFile, MAX_FONT_BYTES);
       if (!validation.ok) {
         setDialogError(validation.error);
         return;
@@ -271,7 +283,8 @@ export default function MarcaPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget || pending) return;
+    if (!deleteTarget || pending || !ready) return;
+    clearError();
     setPending(true);
     setDialogError("");
     setNotice("");
@@ -296,6 +309,7 @@ export default function MarcaPage() {
 
       {collectionError ? <p role="alert" className="mb-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{collectionError}</p> : null}
       {notice ? <p role="status" className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">{notice}</p> : null}
+      {!ready ? <p role="status" className="mb-4 text-xs text-[var(--muted)]">Cargando recursos de marca…</p> : null}
 
       <h2 className="mb-4 text-lg font-semibold text-white">Paleta</h2>
       <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -317,20 +331,26 @@ export default function MarcaPage() {
           <Input value={newColor.name} onChange={(event) => setNewColor((current) => ({ ...current, name: event.target.value }))} placeholder="Nombre del color" />
           <div className="flex items-center gap-2">
             <input type="color" value={newColor.hex} onChange={(event) => setNewColor((current) => ({ ...current, hex: event.target.value }))} className="h-9 w-11 cursor-pointer rounded border border-white/10 bg-transparent" aria-label="Elegir color" />
-            <Button variant="subtle" className="flex-1" onClick={addColor}><Plus className="h-3.5 w-3.5" /> Agregar</Button>
+            <Button variant="subtle" className="flex-1" disabled={!ready} onClick={addColor}><Plus className="h-3.5 w-3.5" /> Agregar</Button>
           </div>
         </Card>
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-4">
         <h2 className="text-lg font-semibold text-white">Tipografías</h2>
-        <Button type="button" variant="subtle" onClick={openCreate}><Upload className="h-4 w-4" /> Agregar fuente</Button>
+        <Button type="button" variant="subtle" disabled={!ready} onClick={openCreate}><Upload className="h-4 w-4" /> Agregar fuente</Button>
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         <Reveal><InterfaceFontCard /></Reveal>
         {fonts.map((font, index) => (
           <Reveal key={font.id} delay={(index + 1) * 0.04}>
-            <FontCard asset={font} onEdit={openEdit} onDelete={(asset) => { setDialogError(""); setNotice(""); setDeleteTarget(asset); }} />
+            <FontCard asset={font} disabled={!ready} onEdit={openEdit} onDelete={(asset) => {
+              if (!ready) return;
+              clearError();
+              setDialogError("");
+              setNotice("");
+              setDeleteTarget(asset);
+            }} />
           </Reveal>
         ))}
       </div>
@@ -342,7 +362,7 @@ export default function MarcaPage() {
         description={editor?.mode === "edit" ? "Podés actualizar los datos o reemplazar el archivo." : "Subí una fuente real de hasta 5 MB."}
         footer={<>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => setEditor(null)}>Cancelar</Button>
-          <Button type="button" disabled={pending} onClick={saveFont}>{pending ? "Guardando…" : editor?.mode === "edit" ? "Guardar cambios" : "Guardar fuente"}</Button>
+          <Button type="button" disabled={pending || !ready} onClick={saveFont}>{pending ? "Guardando…" : editor?.mode === "edit" ? "Guardar cambios" : "Guardar fuente"}</Button>
         </>}
       >
         <div className="space-y-4">
@@ -363,7 +383,7 @@ export default function MarcaPage() {
         description={deleteTarget ? `Se eliminará “${deleteTarget.name}” del Manual de Marca.` : undefined}
         footer={<>
           <Button type="button" variant="ghost" disabled={pending} onClick={() => setDeleteTarget(null)}>Cancelar</Button>
-          <Button type="button" disabled={pending} className="bg-red-400 text-black hover:bg-red-300" onClick={confirmDelete}>{pending ? "Eliminando…" : "Sí, eliminar"}</Button>
+          <Button type="button" disabled={pending || !ready} className="bg-red-400 text-black hover:bg-red-300" onClick={confirmDelete}>{pending ? "Eliminando…" : "Sí, eliminar"}</Button>
         </>}
       >
         {dialogError ? <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{dialogError}</p> : null}

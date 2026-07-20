@@ -15,6 +15,17 @@ export type AssetValidationRules = { kind: "image" | "font"; maxBytes: number };
 export type AssetValidationResult = { ok: true } | { ok: false; error: string };
 export type AssetMutationResult = { ok: true; url: string } | { ok: false; error: string };
 
+const FONT_SIGNATURES: Record<string, number[][]> = {
+  woff2: [[0x77, 0x4f, 0x46, 0x32]],
+  woff: [[0x77, 0x4f, 0x46, 0x46]],
+  otf: [[0x4f, 0x54, 0x54, 0x4f]],
+  ttf: [
+    [0x00, 0x01, 0x00, 0x00],
+    [0x74, 0x72, 0x75, 0x65],
+    [0x74, 0x79, 0x70, 0x31],
+  ],
+};
+
 export function validateAssetFile(file: File, rules: AssetValidationRules): AssetValidationResult {
   const maxMegabytes = rules.maxBytes / 1024 / 1024;
   if (file.size > rules.maxBytes) {
@@ -36,6 +47,47 @@ export function validateAssetFile(file: File, rules: AssetValidationRules): Asse
     return { ok: false, error: `${file.name} no es un archivo ${rules.kind === "image" ? "de imagen" : "de fuente"} compatible.` };
   }
 
+  return { ok: true };
+}
+
+function readFileBuffer(file: File) {
+  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("No se pudo leer el archivo."));
+    reader.onload = () => reader.result instanceof ArrayBuffer
+      ? resolve(reader.result)
+      : reject(new Error("No se pudo leer el archivo."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function hasFontSignature(bytes: Uint8Array, extension: string) {
+  return FONT_SIGNATURES[extension]?.some((signature) => signature.every((byte, index) => bytes[index] === byte)) ?? false;
+}
+
+export async function validateFontFile(file: File, maxBytes = 5 * 1024 * 1024): Promise<AssetValidationResult> {
+  const basic = validateAssetFile(file, { kind: "font", maxBytes });
+  if (!basic.ok) return basic;
+  const extension = file.name.split(".").pop()!.toLowerCase();
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await readFileBuffer(file);
+  } catch {
+    return { ok: false, error: `${file.name} no pudo leerse para validar su contenido.` };
+  }
+  if (!hasFontSignature(new Uint8Array(buffer, 0, Math.min(4, buffer.byteLength)), extension)) {
+    return { ok: false, error: `${file.name} no contiene una firma binaria ${extension.toUpperCase()} válida.` };
+  }
+
+  if (typeof FontFace === "function") {
+    try {
+      const face = new FontFace(`ElaBelaValidation-${crypto.randomUUID?.() ?? Date.now()}`, buffer);
+      await face.load();
+    } catch {
+      return { ok: false, error: `${file.name} no pudo decodificarse como una fuente válida.` };
+    }
+  }
   return { ok: true };
 }
 

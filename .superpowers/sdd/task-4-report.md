@@ -97,3 +97,60 @@ PASS — exit 0, no diagnostics
 Whitespace: git diff --check
 PASS — exit 0, no whitespace errors
 ```
+
+## Independent-review fixes
+
+### Review RED
+
+The independent review found five blocking gaps. New regression tests were written before changing production:
+
+1. Representative binary headers for WOFF2 (`wOF2`), WOFF (`wOFF`), OTF (`OTTO`), and the accepted TTF sfnt signatures (`00 01 00 00`, `true`, `typ1`) expected an asynchronous content validator. RED: the exported validator was absent.
+2. A WOFF header renamed to `.woff2` expected a precise Spanish signature error. RED: no byte inspection existed.
+3. A stubbed browser `FontFace` decoder rejected a signature-valid binary. RED: no local decode step existed.
+4. Runtime tests made `document.fonts` absent, resolve with zero matches, and reject. RED: absent/empty cases were treated as loaded, and loading/error messages had no live-region semantics.
+5. A stateful collection mock reproduced failure -> retry -> success and edit failure -> delete open. RED: the stale collection alert remained.
+6. Delayed hydration rendered with `ready=false`, then rerendered ready. RED: create/edit/delete were enabled before the initial collection load completed.
+
+Meaningful RED command/result:
+
+```text
+npx vitest run src/lib/__tests__/storage.test.ts src/app/(app)/marca/__tests__/page.test.tsx
+Result before production fix: 14 feature failures, including missing async validator, runtime fallback semantics, stale alert, and hydration gating.
+```
+
+### Review GREEN
+
+- Added `validateFontFile`, which first applies the existing 5 MB/extension/MIME gate, reads the real file bytes, verifies the exact four-byte signature for the selected extension, and then uses `new FontFace(validationFamily, arrayBuffer).load()` when the browser API exists.
+- The local decode path passes an `ArrayBuffer` directly: it creates no object URL, adds no face to `document.fonts`, and therefore leaves no URL/FontFaceSet resource requiring explicit removal.
+- `/marca` awaits content/decode validation before calling `uploadAsset`; arbitrary renamed bytes cannot reach Storage or persistence.
+- Runtime registration now treats missing FontFaceSet support, a zero-length load result, or a rejected load as an error and keeps `var(--font-sans)`.
+- Runtime loading uses `role="status"`; decode/load failure uses `role="alert"`.
+- Every font save/delete attempt clears both the local attempt error and the collection error before work. Opening delete also clears inherited errors. Regression tests prove fail -> retry -> success removes the stale alert.
+- Create, color add, font edit/replace, and delete are disabled and handler-gated until `useBrandAssets().ready` is true. A loading status explains the temporary gate.
+- Existing create/replace/delete compensation order and warnings remain unchanged.
+
+Review-focused GREEN:
+
+```text
+npx vitest run src/lib/__tests__/storage.test.ts src/lib/__tests__/brand-fonts.test.ts src/lib/__tests__/db-mappers.test.ts src/app/(app)/marca/__tests__/page.test.tsx
+PASS — 4 files, 47 tests
+
+npx tsc --noEmit
+PASS — exit 0, no diagnostics
+```
+
+Review-fix final verification, run sequentially so standalone TypeScript did not race `.next`:
+
+```text
+Full unit suite: npm test
+PASS — 13 files, 114 tests
+
+Production build: npm run build
+PASS — compiled, type-checked, and generated 16/16 static pages; /marca included
+
+Standalone types: npx tsc --noEmit
+PASS — exit 0, no diagnostics
+
+Whitespace: git diff --check
+PASS — exit 0, no whitespace errors
+```

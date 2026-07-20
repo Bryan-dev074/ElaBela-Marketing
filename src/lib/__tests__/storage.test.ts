@@ -10,7 +10,14 @@ vi.mock("@/lib/supabase/client", () => ({
   }),
 }));
 
-import { isManagedAssetUrl, removeAssetByPublicUrl, validateAssetFile } from "@/lib/storage";
+import { isManagedAssetUrl, removeAssetByPublicUrl, validateAssetFile, validateFontFile } from "@/lib/storage";
+
+const ascii = (value: string) => new TextEncoder().encode(value);
+const binaryFont = (name: string, type: string, signature: Uint8Array) => new File(
+  [Uint8Array.from(signature).buffer as ArrayBuffer, new Uint8Array([0, 0, 0, 0]).buffer as ArrayBuffer],
+  name,
+  { type },
+);
 
 describe("validateAssetFile", () => {
   it("accepts an image within the configured size limit", () => {
@@ -56,6 +63,43 @@ describe("validateAssetFile", () => {
       ok: false,
       error: "marca.ttf no coincide con el tipo de fuente declarado.",
     });
+  });
+});
+
+describe("validateFontFile", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["marca.woff2", "font/woff2", ascii("wOF2")],
+    ["marca.woff", "font/woff", ascii("wOFF")],
+    ["marca.otf", "font/otf", ascii("OTTO")],
+    ["marca.ttf", "font/ttf", new Uint8Array([0x00, 0x01, 0x00, 0x00])],
+    ["legacy-true.ttf", "font/ttf", ascii("true")],
+    ["legacy-typ1.ttf", "font/ttf", ascii("typ1")],
+  ])("accepts representative %s binary headers", async (name, type, signature) => {
+    await expect(validateFontFile(binaryFont(name, type, signature))).resolves.toEqual({ ok: true });
+  });
+
+  it("rejects bytes whose signature does not match the exact extension", async () => {
+    await expect(validateFontFile(binaryFont("fake.woff2", "font/woff2", ascii("wOFF")))).resolves.toEqual({
+      ok: false,
+      error: "fake.woff2 no contiene una firma binaria WOFF2 válida.",
+    });
+  });
+
+  it("uses local FontFace decoding when available and rejects invalid decoded bytes", async () => {
+    const load = vi.fn().mockRejectedValue(new Error("decode failed"));
+    const FontFaceMock = vi.fn(function FontFaceMock() { return { load }; });
+    vi.stubGlobal("FontFace", FontFaceMock);
+
+    await expect(validateFontFile(binaryFont("broken.woff2", "font/woff2", ascii("wOF2")))).resolves.toEqual({
+      ok: false,
+      error: "broken.woff2 no pudo decodificarse como una fuente válida.",
+    });
+    expect(FontFaceMock).toHaveBeenCalledWith(expect.stringMatching(/^ElaBelaValidation-/), expect.any(ArrayBuffer));
+    expect(load).toHaveBeenCalledTimes(1);
   });
 });
 
