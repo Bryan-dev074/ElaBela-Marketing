@@ -10,6 +10,49 @@ import {
 const supabase = createClient();
 const nn = (v: string | undefined) => (v && v.length ? v : null); // "" -> null for date cols
 
+export type CollectionMutationResult = { ok: true } | { ok: false; error: string };
+
+export interface Publication extends PostType {
+  exampleImages: string[];
+  guide: string;
+  toolIds: string[];
+}
+
+export function publicationFromRow(r: Record<string, unknown>): Publication {
+  const exampleImages = Array.isArray(r.example_images) && r.example_images.length
+    ? r.example_images.filter((image): image is string => typeof image === "string")
+    : typeof r.example_image === "string" && r.example_image ? [r.example_image] : [];
+
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    icon: (r.icon as string) || "✨",
+    desc: (r.descr as string) || "",
+    accent: (r.accent as string) || "#d6ab99",
+    example: (r.example as string) || "",
+    exampleImage: exampleImages[0] || "",
+    exampleImages,
+    guide: (r.guide as string) || "",
+    toolIds: Array.isArray(r.tool_ids) ? r.tool_ids.filter((id): id is string => typeof id === "string") : [],
+  };
+}
+
+export function publicationToRow(p: Publication): Record<string, unknown> {
+  const exampleImages = p.exampleImages.filter((image) => image.length > 0);
+  return {
+    id: p.id,
+    name: p.name,
+    icon: p.icon,
+    descr: p.desc,
+    accent: p.accent,
+    example: p.example ?? null,
+    example_image: exampleImages[0] ?? p.exampleImage ?? null,
+    example_images: exampleImages,
+    guide: p.guide,
+    tool_ids: p.toolIds,
+  };
+}
+
 /**
  * Loads a collection from Supabase; if the table errors (not migrated) or is empty,
  * falls back to the local seed so the UI never breaks. Writes go through to Supabase
@@ -27,6 +70,7 @@ export function useCollection<T extends object>(cfg: {
   const idOf = (i: T) => (i as Record<string, unknown>)[idKey];
   const [items, setItems] = useState<T[]>(cfg.seed);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const live = useRef(true);
 
   useEffect(() => {
@@ -49,30 +93,64 @@ export function useCollection<T extends object>(cfg: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const add = (item: T) => {
-    setItems((p) => [item, ...p]);
-    supabase.from(cfg.table).insert(cfg.toRow(item)).then(() => {});
+  const clearError = () => setError(null);
+  const addAsync = async (item: T): Promise<CollectionMutationResult> => {
+    const previous = items;
+    setItems([item, ...previous]);
+    const { error: mutationError } = await supabase.from(cfg.table).insert(cfg.toRow(item));
+    if (mutationError) {
+      setItems(previous);
+      setError(mutationError.message);
+      return { ok: false, error: mutationError.message };
+    }
+    return { ok: true };
   };
-  const upsert = (item: T) => {
-    setItems((p) => (p.some((i) => idOf(i) === idOf(item)) ? p.map((i) => (idOf(i) === idOf(item) ? item : i)) : [item, ...p]));
-    supabase.from(cfg.table).upsert(cfg.toRow(item)).then(() => {});
+  const upsertAsync = async (item: T): Promise<CollectionMutationResult> => {
+    const previous = items;
+    const next = previous.some((i) => idOf(i) === idOf(item))
+      ? previous.map((i) => (idOf(i) === idOf(item) ? item : i))
+      : [item, ...previous];
+    setItems(next);
+    const { error: mutationError } = await supabase.from(cfg.table).upsert(cfg.toRow(item));
+    if (mutationError) {
+      setItems(previous);
+      setError(mutationError.message);
+      return { ok: false, error: mutationError.message };
+    }
+    return { ok: true };
   };
-  const update = (id: unknown, patch: Partial<T>) => {
-    // The updater only computes state (StrictMode may run it twice — writing the
-    // same local var is idempotent); the network write runs once, afterwards.
-    // Upsert (not update) so edits to seed-only rows also persist.
-    let row: T | undefined;
-    setItems((p) => p.map((i) => (idOf(i) === id ? (row = { ...i, ...patch }) : i)));
-    queueMicrotask(() => {
-      if (row) supabase.from(cfg.table).upsert(cfg.toRow(row)).then(() => {});
-    });
+  const updateAsync = async (id: unknown, patch: Partial<T>): Promise<CollectionMutationResult> => {
+    const previous = items;
+    const row = previous.find((item) => idOf(item) === id);
+    if (!row) return { ok: true };
+    const updated = { ...row, ...patch };
+    setItems(previous.map((item) => (idOf(item) === id ? updated : item)));
+    const { error: mutationError } = await supabase.from(cfg.table).upsert(cfg.toRow(updated));
+    if (mutationError) {
+      setItems(previous);
+      setError(mutationError.message);
+      return { ok: false, error: mutationError.message };
+    }
+    return { ok: true };
   };
-  const remove = (id: unknown) => {
-    setItems((p) => p.filter((i) => idOf(i) !== id));
-    supabase.from(cfg.table).delete().eq(idKey, id as string).then(() => {});
+  const removeAsync = async (id: unknown): Promise<CollectionMutationResult> => {
+    const previous = items;
+    setItems(previous.filter((item) => idOf(item) !== id));
+    const { error: mutationError } = await supabase.from(cfg.table).delete().eq(idKey, id as string);
+    if (mutationError) {
+      setItems(previous);
+      setError(mutationError.message);
+      return { ok: false, error: mutationError.message };
+    }
+    return { ok: true };
   };
 
-  return { items, setItems, add, upsert, update, remove, ready };
+  const add = (item: T) => { void addAsync(item); };
+  const upsert = (item: T) => { void upsertAsync(item); };
+  const update = (id: unknown, patch: Partial<T>) => { void updateAsync(id, patch); };
+  const remove = (id: unknown) => { void removeAsync(id); };
+
+  return { items, setItems, add, upsert, update, remove, addAsync, upsertAsync, updateAsync, removeAsync, error, clearError, ready };
 }
 
 /* ---------------- Entity hooks ---------------- */
@@ -137,8 +215,13 @@ export const usePostTypes = () =>
     table: "post_types",
     seed: POST_TYPES,
     order: { col: "sort" },
-    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", desc: (r.descr as string) || "", accent: (r.accent as string) || "#d6ab99", example: (r.example as string) || "", exampleImage: (r.example_image as string) || "" }),
-    toRow: (p) => ({ id: p.id, name: p.name, icon: p.icon, descr: p.desc, accent: p.accent, example: p.example ?? null, example_image: p.exampleImage ?? null }),
+    fromRow: publicationFromRow,
+    toRow: (post) => publicationToRow({
+      ...post,
+      exampleImages: post.exampleImage ? [post.exampleImage] : [],
+      guide: "",
+      toolIds: [],
+    }),
   });
 
 export const useStoryConfig = () =>
