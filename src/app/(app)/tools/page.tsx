@@ -7,7 +7,7 @@ import { PageHeader, Button, Modal, Field, Input, Textarea, Select, EmptyState, 
 import { IconPicker } from "@/components/IconPicker";
 import { Lightbox } from "@/components/Lightbox";
 import { ToolCategoryManager } from "@/components/ToolCategoryManager";
-import { moveAndDeleteToolCategory, useToolCategories, useToolItems, type ToolItem } from "@/lib/db";
+import { moveAndDeleteToolCategory, reorderToolCategories, useToolCategories, useToolItems, type ToolItem } from "@/lib/db";
 import { fileToImage } from "@/lib/profiles";
 import { isManagedAssetUrl, removeAssetByPublicUrl, uploadAsset, validateAssetFile } from "@/lib/storage";
 import {
@@ -16,6 +16,7 @@ import {
   assetFileFromDataUrl,
   resolveCategoryId,
   safeExternalUrl,
+  syncToolToCategory,
   type ToolCategoryRow,
 } from "@/lib/tool-categories";
 
@@ -364,22 +365,16 @@ export default function ToolsPage() {
   async function updateCategory(category: ToolCategoryRow) {
     const result = await categoryStore.updateAsync(category.id, category);
     if (result.ok) {
-      setToolItems((current) => current.map((tool) => tool.categoryId === category.id ? {
-        ...tool,
-        category: category.id,
-        kind: category.kind,
-        href: category.kind === "link" ? tool.href : "",
-        steps: category.kind === "prompt" ? tool.steps : "",
-      } : tool));
+      setToolItems((current) => current.map((tool) => tool.categoryId === category.id
+        ? syncToolToCategory(tool, category)
+        : tool));
     }
     return result;
   }
 
   async function reorderCategories(reordered: ToolCategoryRow[]) {
-    for (const category of reordered) {
-      const result = await categoryStore.updateAsync(category.id, { sort: category.sort });
-      if (!result.ok) return result;
-    }
+    const result = await reorderToolCategories(reordered.map((category) => category.id));
+    if (!result.ok) return result;
     categoryStore.setItems(reordered);
     return { ok: true as const };
   }
@@ -389,14 +384,10 @@ export default function ToolsPage() {
     const result = await moveAndDeleteToolCategory(categoryId, destinationId);
     if (!result.ok) return result;
     categoryStore.setItems((current) => current.filter((category) => category.id !== categoryId));
-    setToolItems((current) => current.map((tool) => tool.categoryId === categoryId && destinationId ? {
-      ...tool,
-      category: destinationId,
-      categoryId: destinationId,
-      kind: categoryById(destinationId)?.kind ?? tool.kind,
-      href: categoryById(destinationId)?.kind === "prompt" ? "" : tool.href,
-      steps: categoryById(destinationId)?.kind === "link" ? "" : tool.steps,
-    } : tool));
+    const destination = destinationId ? categoryById(destinationId) : undefined;
+    setToolItems((current) => current.map((tool) => tool.categoryId === categoryId && destination
+      ? syncToolToCategory(tool, destination)
+      : tool));
     if (filter === categoryId) setFilter(destinationId ?? "all");
     if (deletedCategory && isManagedAssetUrl(deletedCategory.icon)) {
       const cleanup = await removeAssetByPublicUrl(deletedCategory.icon);
@@ -872,9 +863,10 @@ export default function ToolsPage() {
       {/* Visor de imágenes dentro de la colección filtrada */}
       <Lightbox
         images={lightboxIndex >= 0 ? mediaItems.map((item) => item.image) : []}
+        alts={lightboxIndex >= 0 ? mediaItems.map((item) => item.title) : []}
+        captions={lightboxIndex >= 0 ? mediaItems.map((item) => item.title) : []}
         initialIndex={Math.max(0, lightboxIndex)}
         alt={activeLightboxItem?.title ?? "Imagen de recurso"}
-        caption={activeLightboxItem?.title}
         onClose={() => setLightboxId(null)}
       />
     </div>

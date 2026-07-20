@@ -393,6 +393,13 @@ export async function moveAndDeleteToolCategory(categoryId: string, destinationI
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+export async function reorderToolCategories(categoryIds: string[]): Promise<CollectionMutationResult> {
+  const { error } = await supabase.rpc("reorder_tool_categories", {
+    p_category_ids: categoryIds,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 export interface CalEventRow { id: string; date: string; kind: "tarea" | "proyecto"; title: string; owner: string }
 export const useCalendarEvents = () =>
   useCollection<CalEventRow>({

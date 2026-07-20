@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   setToolItems: vi.fn(),
   setCategories: vi.fn(),
   moveAndDelete: vi.fn(),
+  reorderCategories: vi.fn(),
   uploadAsset: vi.fn(),
   removeAssetByPublicUrl: vi.fn(),
 }));
@@ -44,6 +45,7 @@ vi.mock("@/lib/db", async (importOriginal) => {
       clearError: vi.fn(),
     }),
     moveAndDeleteToolCategory: mocks.moveAndDelete,
+    reorderToolCategories: mocks.reorderCategories,
   };
 });
 
@@ -62,6 +64,7 @@ describe("ToolsPage dynamic categories", () => {
     mocks.updateAsync.mockReset().mockResolvedValue({ ok: true });
     mocks.removeAsync.mockReset().mockResolvedValue({ ok: true });
     mocks.moveAndDelete.mockReset().mockResolvedValue({ ok: true });
+    mocks.reorderCategories.mockReset().mockResolvedValue({ ok: true });
     mocks.uploadAsset.mockReset().mockResolvedValue({ ok: true, url: "https://example.supabase.co/storage/v1/object/public/elabela-assets/tools/new.png" });
     mocks.removeAssetByPublicUrl.mockReset().mockResolvedValue({ ok: true });
   });
@@ -85,7 +88,7 @@ describe("ToolsPage dynamic categories", () => {
     expect(screen.getByRole("link", { name: "Abrir App visible" })).toHaveAttribute("href", "https://example.com/");
   });
 
-  it("places contained media before each card title and opens the collection lightbox", () => {
+  it("places contained media before each card title and keeps Lightbox labels in sync", () => {
     render(<ToolsPage />);
 
     const promptCard = screen.getByText("Prompt visible").closest("article");
@@ -97,7 +100,21 @@ describe("ToolsPage dynamic categories", () => {
 
     fireEvent.click(media);
     expect(screen.getByRole("dialog", { name: "Prompt visible" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Prompt visible 1" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Prompt visible" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Imagen siguiente" }));
+    expect(screen.getByRole("dialog", { name: "App visible" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "App visible" })).toHaveAttribute("src", "app.jpg");
+  });
+
+  it("leaves local category order untouched when the reorder transaction fails", async () => {
+    mocks.reorderCategories.mockResolvedValueOnce({ ok: false, error: "No se pudo reordenar." });
+    render(<ToolsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Gestionar categorías" }));
+    fireEvent.click(screen.getByRole("button", { name: "Subir Apps" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo reordenar.");
+    expect(mocks.reorderCategories).toHaveBeenCalledWith(["apps", "prompts"]);
+    expect(mocks.setCategories).not.toHaveBeenCalled();
   });
 
   it("rejects unsafe external links without creating an anchor", () => {

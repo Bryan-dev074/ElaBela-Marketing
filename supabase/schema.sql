@@ -384,9 +384,7 @@ begin
     update public.tool_items
     set category_id = p_destination_id,
         category = case when p_destination_id = 'redes-sociales' then 'links' else p_destination_id end,
-        kind = destination_kind,
-        href = case when destination_kind = 'prompt' then null else href end,
-        steps = case when destination_kind = 'link' then null else steps end
+        kind = destination_kind
     where category_id = p_category_id;
   end if;
 
@@ -406,9 +404,7 @@ as $$
 begin
   if new.kind is distinct from old.kind then
     update public.tool_items
-    set kind = new.kind,
-        href = case when new.kind = 'prompt' then null else href end,
-        steps = case when new.kind = 'link' then null else steps end
+    set kind = new.kind
     where category_id = new.id;
   end if;
   return new;
@@ -419,6 +415,42 @@ drop trigger if exists sync_tool_category_kind on public.tool_categories;
 create trigger sync_tool_category_kind
 after update of kind on public.tool_categories
 for each row execute function public.sync_tool_category_kind();
+
+create or replace function public.reorder_tool_categories(p_category_ids text[])
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  requested_count integer := coalesce(cardinality(p_category_ids), 0);
+  stored_count integer;
+  matched_count integer;
+begin
+  if requested_count = 0 then
+    raise exception 'La lista de categorías no puede estar vacía.';
+  end if;
+  if exists (
+    select 1 from unnest(p_category_ids) as requested(id)
+    group by requested.id having count(*) > 1
+  ) then
+    raise exception 'La lista de categorías contiene IDs repetidos.';
+  end if;
+
+  select count(*) into stored_count from public.tool_categories;
+  select count(*) into matched_count
+  from public.tool_categories
+  where id = any(p_category_ids);
+  if stored_count <> requested_count or matched_count <> requested_count then
+    raise exception 'La lista de categorías está desactualizada.';
+  end if;
+
+  update public.tool_categories as category
+  set sort = requested.ordinality - 1
+  from unnest(p_category_ids) with ordinality as requested(id, ordinality)
+  where category.id = requested.id;
+end;
+$$;
 
 alter table public.brand_assets add column if not exists file_url text;
 alter table public.brand_assets add column if not exists file_format text;
@@ -523,3 +555,4 @@ grant select, insert, update, delete on table
 to authenticated;
 
 grant execute on function public.move_and_delete_tool_category(text, text) to authenticated;
+grant execute on function public.reorder_tool_categories(text[]) to authenticated;

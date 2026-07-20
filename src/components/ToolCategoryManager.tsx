@@ -13,7 +13,7 @@ import {
   type ToolCategoryRow,
 } from "@/lib/tool-categories";
 
-type MutationResult = { ok: true } | { ok: false; error: string };
+type MutationResult = { ok: true; warning?: string } | { ok: false; error: string };
 
 type Props = {
   open: boolean;
@@ -33,25 +33,32 @@ export function ToolCategoryManager({ open, onClose, categories, tools, onAdd, o
   const [view, setView] = useState<View>({ type: "list" });
   const [destinationId, setDestinationId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setView({ type: "list" });
     setDestinationId("");
     setError(null);
+    setNotice(null);
   }, [open]);
 
   const title = view.type === "list" ? "Gestionar categorías" : view.type === "delete" ? `Eliminar ${view.category.name}` : view.previous ? `Editar ${view.previous.name}` : "Nueva categoría";
 
   async function move(index: number, delta: number) {
+    if (reordering) return;
     const target = index + delta;
     if (target < 0 || target >= sorted.length) return;
     const reordered = [...sorted];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     const withSort = reordered.map((category, sort) => ({ ...category, sort }));
     setError(null);
+    setNotice(null);
+    setReordering(true);
     const result = await onReorder(withSort);
+    setReordering(false);
     if (!result.ok) setError(result.error);
   }
 
@@ -70,12 +77,14 @@ export function ToolCategoryManager({ open, onClose, categories, tools, onAdd, o
     };
     setBusy(true);
     setError(null);
+    setNotice(null);
     const result = await persistCategoryWithAssets(draft, view.previous, view.previous ? onUpdate : onAdd);
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
+    setNotice(result.warning ?? null);
     setView({ type: "list" });
   }
 
@@ -124,6 +133,7 @@ export function ToolCategoryManager({ open, onClose, categories, tools, onAdd, o
       )}
     >
       {error ? <p role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">{error}</p> : null}
+      {notice ? <p role="status" className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">{notice}</p> : null}
 
       {view.type === "list" ? (
         <div className="space-y-3">
@@ -147,10 +157,10 @@ export function ToolCategoryManager({ open, onClose, categories, tools, onAdd, o
                 <p className="truncate text-sm font-medium text-white">{category.name}</p>
                 <p className="text-[11px] text-[var(--faint)]">{category.kind === "prompt" ? "Presentación prompt" : "Presentación enlace"}</p>
               </div>
-              <button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Subir ${category.name}`} className="press flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-white/5 hover:text-white disabled:opacity-25">
+              <button type="button" onClick={() => move(index, -1)} disabled={reordering || index === 0} aria-label={`Subir ${category.name}`} className="press flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-white/5 hover:text-white disabled:opacity-25">
                 <ChevronUp className="h-4 w-4" />
               </button>
-              <button type="button" onClick={() => move(index, 1)} disabled={index === sorted.length - 1} aria-label={`Bajar ${category.name}`} className="press flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-white/5 hover:text-white disabled:opacity-25">
+              <button type="button" onClick={() => move(index, 1)} disabled={reordering || index === sorted.length - 1} aria-label={`Bajar ${category.name}`} className="press flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-white/5 hover:text-white disabled:opacity-25">
                 <ChevronDown className="h-4 w-4" />
               </button>
               <button type="button" onClick={() => setView({ type: "edit", draft: { ...category }, previous: category })} aria-label={`Editar ${category.name}`} className="press flex h-11 w-11 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-white/5 hover:text-white">

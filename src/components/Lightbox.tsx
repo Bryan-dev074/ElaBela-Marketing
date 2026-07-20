@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { containTabFocus } from "@/lib/focus-management";
 
 const EMPTY_IMAGES: string[] = [];
+const EMPTY_LABELS: string[] = [];
 
 /**
  * Fullscreen image/GIF viewer: click any thumbnail in the app to inspect it
@@ -15,6 +16,8 @@ const EMPTY_IMAGES: string[] = [];
 export function Lightbox({
   src,
   images = EMPTY_IMAGES,
+  alts = EMPTY_LABELS,
+  captions = EMPTY_LABELS,
   initialIndex = 0,
   alt = "",
   caption,
@@ -22,6 +25,8 @@ export function Lightbox({
 }: {
   src?: string | null;
   images?: string[];
+  alts?: string[];
+  captions?: string[];
   initialIndex?: number;
   alt?: string;
   caption?: string;
@@ -67,7 +72,8 @@ export function Lightbox({
 
   if (typeof document === "undefined") return null;
   const activeSrc = sources[activeIndex];
-  const imageAlt = imageCount > 1 ? `${alt} ${activeIndex + 1}` : alt;
+  const activeCaption = captions[activeIndex] ?? caption;
+  const imageAlt = alts[activeIndex] ?? (imageCount > 1 ? `${alt} ${activeIndex + 1}` : alt);
   return createPortal(
     <AnimatePresence>
       {activeSrc ? (
@@ -76,8 +82,8 @@ export function Lightbox({
           className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-10"
           role="dialog"
           aria-modal="true"
-          aria-labelledby={caption ? captionId : undefined}
-          aria-label={caption ? undefined : alt || "Vista ampliada"}
+          aria-labelledby={activeCaption ? captionId : undefined}
+          aria-label={activeCaption ? undefined : imageAlt || "Vista ampliada"}
           tabIndex={-1}
           onKeyDown={(event) => {
             if (dialogRef.current) containTabFocus(event, dialogRef.current);
@@ -101,7 +107,7 @@ export function Lightbox({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={activeSrc} alt={imageAlt} className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-pop" />
-            {caption ? <figcaption id={captionId} className="glow-text mt-3 text-center text-xs font-medium">{caption}</figcaption> : null}
+            {activeCaption ? <figcaption id={captionId} className="glow-text mt-3 text-center text-xs font-medium">{activeCaption}</figcaption> : null}
             {imageCount > 1 ? (
               <>
                 <button

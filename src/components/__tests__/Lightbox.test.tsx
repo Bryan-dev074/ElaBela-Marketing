@@ -36,6 +36,23 @@ describe("Lightbox", () => {
     expect(screen.getByRole("img", { name: "Ejemplo 3" })).toHaveAttribute("src", "three.jpg");
   });
 
+  it("updates per-image alt text and caption while navigating", () => {
+    render(
+      <Lightbox
+        images={["one.jpg", "two.jpg"]}
+        alts={["Primera herramienta", "Segunda herramienta"]}
+        captions={["Primera herramienta", "Segunda herramienta"]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Primera herramienta" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Primera herramienta" })).toHaveAttribute("src", "one.jpg");
+    fireEvent.click(screen.getByRole("button", { name: "Imagen siguiente" }));
+    expect(screen.getByRole("dialog", { name: "Segunda herramienta" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Segunda herramienta" })).toHaveAttribute("src", "two.jpg");
+  });
+
   it("remains compatible with a single src", () => {
     render(<Lightbox src="legacy.jpg" alt="Legacy" onClose={vi.fn()} />);
 

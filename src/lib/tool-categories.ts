@@ -112,10 +112,24 @@ export function categoryIdFromName(name: string, categories: ToolCategoryRow[]) 
   const base = comparable(name)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "categoria";
+  const reservedIds = new Set([
+    "all",
+    UNCATEGORIZED_ID,
+    "links",
+    "gems",
+    ...DEFAULT_TOOL_CATEGORIES.map((category) => category.id),
+  ]);
   let id = base;
   let suffix = 2;
-  while (categories.some((category) => category.id === id)) id = `${base}-${suffix++}`;
+  while (reservedIds.has(id) || categories.some((category) => category.id === id)) id = `${base}-${suffix++}`;
   return id;
+}
+
+export function syncToolToCategory<T extends { category: string; categoryId: string; kind: ToolPresentationKind }>(
+  tool: T,
+  category: Pick<ToolCategoryRow, "id" | "kind">,
+): T {
+  return { ...tool, category: category.id, categoryId: category.id, kind: category.kind };
 }
 
 export function assetFileFromDataUrl(dataUrl: string, baseName = "categoria") {
@@ -128,7 +142,7 @@ export function assetFileFromDataUrl(dataUrl: string, baseName = "categoria") {
   return new File([bytes], `${baseName}.${extension}`, { type: mime });
 }
 
-type MutationResult = { ok: true } | { ok: false; error: string };
+type MutationResult = { ok: true; warning?: string } | { ok: false; error: string };
 type CategoryAssetDeps = {
   upload: typeof uploadAsset;
   remove: typeof removeAssetByPublicUrl;
@@ -159,11 +173,25 @@ export async function persistCategoryWithAssets(
 
   const result = await persist(next);
   if (!result.ok) {
-    if (uploadedUrl) await assets.remove(uploadedUrl);
+    if (uploadedUrl) {
+      const rollback = await assets.remove(uploadedUrl);
+      if (!rollback.ok) {
+        return {
+          ok: false,
+          error: `${result.error} Además, no se pudo revertir el ícono nuevo: ${rollback.error}`,
+        };
+      }
+    }
     return result;
   }
   if (previous?.icon && previous.icon !== next.icon && isManagedAssetUrl(previous.icon)) {
-    await assets.remove(previous.icon);
+    const cleanup = await assets.remove(previous.icon);
+    if (!cleanup.ok) {
+      return {
+        ok: true,
+        warning: `La categoría se guardó, pero no se pudo borrar el ícono anterior: ${cleanup.error}`,
+      };
+    }
   }
   return { ok: true };
 }
