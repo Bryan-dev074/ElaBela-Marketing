@@ -2,8 +2,13 @@ import { createClient } from "@/lib/supabase/client";
 
 const BUCKET = "elabela-assets";
 const IMAGE_TYPES = new Set(["image/avif", "image/gif", "image/jpeg", "image/png", "image/svg+xml", "image/webp"]);
-const FONT_TYPES = new Set(["application/font-woff", "application/font-woff2", "font/otf", "font/ttf", "font/woff", "font/woff2"]);
 const FONT_EXTENSIONS = new Set(["woff2", "woff", "ttf", "otf"]);
+const FONT_TYPES_BY_EXTENSION: Record<string, Set<string>> = {
+  woff2: new Set(["application/font-woff2", "font/woff2"]),
+  woff: new Set(["application/font-woff", "font/woff"]),
+  ttf: new Set(["font/ttf"]),
+  otf: new Set(["font/otf"]),
+};
 
 export type AssetFolder = "publications" | "tools" | "brand/fonts";
 export type AssetValidationRules = { kind: "image" | "font"; maxBytes: number };
@@ -18,8 +23,11 @@ export function validateAssetFile(file: File, rules: AssetValidationRules): Asse
 
   if (rules.kind === "font") {
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (!extension || !FONT_EXTENSIONS.has(extension) || (file.type && !FONT_TYPES.has(file.type))) {
+    if (!extension || !FONT_EXTENSIONS.has(extension)) {
       return { ok: false, error: `${file.name} no es un archivo de fuente compatible.` };
+    }
+    if (file.type && !FONT_TYPES_BY_EXTENSION[extension].has(file.type)) {
+      return { ok: false, error: `${file.name} no coincide con el tipo de fuente declarado.` };
     }
     return { ok: true };
   }

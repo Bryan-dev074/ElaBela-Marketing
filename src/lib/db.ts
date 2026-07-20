@@ -410,14 +410,53 @@ export const useCalendarEvents = () =>
     toRow: (e) => ({ id: e.id, event_date: e.date, kind: e.kind, title: e.title, owner: e.owner }),
   });
 
-export interface BrandAsset { id: string; kind: "color" | "font"; name: string; value: string; role: string }
+export type BrandFontFormat = "woff2" | "woff" | "ttf" | "otf";
+export interface BrandAsset {
+  id: string;
+  kind: "color" | "font";
+  name: string;
+  value: string;
+  role: string;
+  fileUrl?: string;
+  fileFormat?: BrandFontFormat;
+  storagePath?: string;
+}
+
+export function brandAssetFromRow(r: Record<string, unknown>): BrandAsset {
+  return {
+    id: r.id as string,
+    kind: (r.kind as "color" | "font") || "color",
+    name: r.name as string,
+    value: (r.value as string) || "",
+    role: (r.role_label as string) || "",
+    fileUrl: typeof r.file_url === "string" && r.file_url ? r.file_url : undefined,
+    fileFormat: typeof r.file_format === "string" && r.file_format
+      ? r.file_format as BrandFontFormat
+      : undefined,
+    storagePath: typeof r.storage_path === "string" && r.storage_path ? r.storage_path : undefined,
+  };
+}
+
+export function brandAssetToRow(a: BrandAsset): Record<string, unknown> {
+  return {
+    id: a.id,
+    kind: a.kind,
+    name: a.name,
+    value: a.value,
+    role_label: a.role,
+    file_url: a.fileUrl ?? null,
+    file_format: a.fileFormat ?? null,
+    storage_path: a.storagePath ?? null,
+  };
+}
+
 export const useBrandAssets = () =>
   useCollection<BrandAsset>({
     table: "brand_assets",
     seed: [],
     order: { col: "created_at" },
-    fromRow: (r) => ({ id: r.id as string, kind: (r.kind as "color" | "font") || "color", name: r.name as string, value: r.value as string, role: (r.role_label as string) || "" }),
-    toRow: (a) => ({ id: a.id, kind: a.kind, name: a.name, value: a.value, role_label: a.role }),
+    fromRow: brandAssetFromRow,
+    toRow: brandAssetToRow,
   });
 
 export interface CredRow { id: string; platform: string; icon: string; idType: "email" | "usuario"; identifier: string; secret: string; scope: "shared" | "private"; ownerId?: string }

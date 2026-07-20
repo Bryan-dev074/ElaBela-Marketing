@@ -1,4 +1,6 @@
 import {
+  brandAssetFromRow,
+  brandAssetToRow,
   postTypeToRow,
   publicationFromRow,
   publicationToRow,
@@ -118,6 +120,41 @@ describe("publicationFromRow", () => {
       accent: "#22d3ee",
       kind: "link",
       sort: 2,
+    });
+  });
+});
+
+describe("brand asset compatibility mapping", () => {
+  it("loads legacy name-only fonts without inventing file metadata", () => {
+    expect(brandAssetFromRow({ id: "legacy", kind: "font", name: "Legacy", value: "Legacy", role_label: "Archivo" })).toEqual({
+      id: "legacy",
+      kind: "font",
+      name: "Legacy",
+      value: "Legacy",
+      role: "Archivo",
+      fileUrl: undefined,
+      fileFormat: undefined,
+      storagePath: undefined,
+    });
+  });
+
+  it("round-trips uploaded font metadata while preserving color compatibility", () => {
+    const fontRow = {
+      id: "font-1",
+      kind: "font",
+      name: "Serif",
+      value: "Serif",
+      role_label: "Títulos",
+      file_url: "https://assets.example/serif.otf",
+      file_format: "otf",
+      storage_path: "brand/fonts/serif.otf",
+    };
+
+    expect(brandAssetToRow(brandAssetFromRow(fontRow))).toMatchObject(fontRow);
+    expect(brandAssetToRow({ id: "color", kind: "color", name: "Nude", value: "#d6ab99", role: "Marca" })).toMatchObject({
+      file_url: null,
+      file_format: null,
+      storage_path: null,
     });
   });
 });

@@ -51,3 +51,54 @@ export const NAV: NavItem[] = [
 
 export const APP_NAME = "ElaBela";
 export const APP_TAGLINE = "Marketing & Growth Platform";
+
+export type BrandFontFormat = "woff2" | "woff" | "ttf" | "otf";
+
+const BRAND_FONT_FORMATS = new Set<BrandFontFormat>(["woff2", "woff", "ttf", "otf"]);
+const CSS_FONT_FORMAT: Record<BrandFontFormat, string> = {
+  woff2: "woff2",
+  woff: "woff",
+  ttf: "truetype",
+  otf: "opentype",
+};
+
+export function fontFormatFromFileName(name: string): BrandFontFormat | null {
+  const extension = name.split(".").pop()?.toLowerCase() as BrandFontFormat | undefined;
+  return extension && BRAND_FONT_FORMATS.has(extension) ? extension : null;
+}
+
+function stableFontHash(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function brandFontFamily(id: string) {
+  const scopedId = id.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "font";
+  return `ElaBelaBrand-${scopedId}-${stableFontHash(id)}`;
+}
+
+function escapeCssString(value: string) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\"/g, '\\\"')
+    .replace(/\r/g, "\\d ")
+    .replace(/\n/g, "\\a ")
+    .replace(/\f/g, "\\c ");
+}
+
+export function brandFontFaceRule(asset: { id: string; fileUrl?: string; fileFormat?: string }) {
+  if (!asset.fileUrl || !asset.fileFormat || !BRAND_FONT_FORMATS.has(asset.fileFormat as BrandFontFormat)) return null;
+  const format = asset.fileFormat as BrandFontFormat;
+  return `@font-face { font-family: "${brandFontFamily(asset.id)}"; src: url("${escapeCssString(asset.fileUrl)}") format("${CSS_FONT_FORMAT[format]}"); font-display: swap; }`;
+}
+
+export function storagePathFromPublicUrl(url: string) {
+  const marker = "/storage/v1/object/public/elabela-assets/";
+  const parsed = new URL(url);
+  const markerIndex = parsed.pathname.indexOf(marker);
+  return markerIndex === -1 ? "" : decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
+}

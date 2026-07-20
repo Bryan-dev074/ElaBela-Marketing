@@ -48,6 +48,15 @@ describe("validateAssetFile", () => {
       error: "marca.eot no es un archivo de fuente compatible.",
     });
   });
+
+  it("rejects a supported font extension paired with a different font MIME", () => {
+    const font = new File(["font"], "marca.ttf", { type: "font/woff2" });
+
+    expect(validateAssetFile(font, { kind: "font", maxBytes: 5 * 1024 * 1024 })).toEqual({
+      ok: false,
+      error: "marca.ttf no coincide con el tipo de fuente declarado.",
+    });
+  });
 });
 
 describe("removeAssetByPublicUrl", () => {
