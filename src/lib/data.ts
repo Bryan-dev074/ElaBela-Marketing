@@ -141,17 +141,20 @@ export interface PostType {
   desc: string;
   accent: string;
   example?: string;
-  exampleImage?: string; // data URL de una imagen de ejemplo propia
+  exampleImage?: string; // URL legacy de la primera imagen, para compatibilidad
+  exampleImages: string[];
+  guide: string;
+  toolIds: string[];
 }
 
 /** Post catalogue — "Tipos de Post". */
 export const POST_TYPES: PostType[] = [
-  { id: "p1", name: "Video con IA", icon: "🤖", desc: "Generado íntegramente con IA", accent: "#818cf8", example: "Avatar presentando el producto con voz IA + b-roll generado." },
-  { id: "p2", name: "Video Híbrido", icon: "🎬", desc: "Grabación local + IA", accent: "#22d3ee", example: "Clip grabado en el local + fondos o transiciones con IA." },
-  { id: "p3", name: "Carrusel", icon: "🎠", desc: "Secuencia de imágenes", accent: "#f472b6", example: "5-7 slides: problema → solución → beneficios → CTA." },
-  { id: "p4", name: "Pedestal", icon: "🏛️", desc: "Producto en pedestal estético", accent: "#d6ab99", example: "Producto centrado, fondo limpio, luz suave, macro." },
-  { id: "p5", name: "Especial", icon: "🎉", desc: "Fecha festiva del calendario", accent: "#34d399", example: "Pieza alusiva a la fecha (feriado/efeméride PY)." },
-  { id: "p6", name: "Trends", icon: "🔥", desc: "Se copia un trend vigente", accent: "#fbbf24", example: "Audio o formato viral adaptado a un producto ElaBela." },
+  { id: "p1", name: "Video con IA", icon: "🤖", desc: "Generado íntegramente con IA", accent: "#818cf8", example: "Avatar presentando el producto con voz IA + b-roll generado.", exampleImages: [], guide: "", toolIds: [] },
+  { id: "p2", name: "Video Híbrido", icon: "🎬", desc: "Grabación local + IA", accent: "#22d3ee", example: "Clip grabado en el local + fondos o transiciones con IA.", exampleImages: [], guide: "", toolIds: [] },
+  { id: "p3", name: "Carrusel", icon: "🎠", desc: "Secuencia de imágenes", accent: "#f472b6", example: "5-7 slides: problema → solución → beneficios → CTA.", exampleImages: [], guide: "", toolIds: [] },
+  { id: "p4", name: "Pedestal", icon: "🏛️", desc: "Producto en pedestal estético", accent: "#d6ab99", example: "Producto centrado, fondo limpio, luz suave, macro.", exampleImages: [], guide: "", toolIds: [] },
+  { id: "p5", name: "Especial", icon: "🎉", desc: "Fecha festiva del calendario", accent: "#34d399", example: "Pieza alusiva a la fecha (feriado/efeméride PY).", exampleImages: [], guide: "", toolIds: [] },
+  { id: "p6", name: "Trends", icon: "🔥", desc: "Se copia un trend vigente", accent: "#fbbf24", example: "Audio o formato viral adaptado a un producto ElaBela.", exampleImages: [], guide: "", toolIds: [] },
 ];
 
 export interface WeeklyReq {

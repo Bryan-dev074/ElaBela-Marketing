@@ -6,22 +6,22 @@ import {
   DAILY_TASKS, PROJECTS, GUIONES, CLIENTS, PRODUCTS, POST_TYPES, STORY_CONFIG, TOOL_CATEGORIES,
   type DailyTask, type Project, type Guion, type Client, type Product, type PostType, type StoryPlatform, type WeeklyTask,
 } from "@/lib/data";
+import { normalizePublicationImages } from "@/lib/publications";
 
 const supabase = createClient();
 const nn = (v: string | undefined) => (v && v.length ? v : null); // "" -> null for date cols
 
 export type CollectionMutationResult = { ok: true } | { ok: false; error: string };
 
-export interface Publication extends PostType {
-  exampleImages: string[];
-  guide: string;
-  toolIds: string[];
-}
+export type Publication = PostType;
 
 export function publicationFromRow(r: Record<string, unknown>): Publication {
-  const exampleImages = Array.isArray(r.example_images) && r.example_images.length
-    ? r.example_images.filter((image): image is string => typeof image === "string")
-    : typeof r.example_image === "string" && r.example_image ? [r.example_image] : [];
+  const exampleImages = normalizePublicationImages(
+    Array.isArray(r.example_images)
+      ? r.example_images.filter((image): image is string => typeof image === "string")
+      : [],
+    typeof r.example_image === "string" ? r.example_image : undefined,
+  );
 
   return {
     id: r.id as string,
@@ -53,13 +53,12 @@ export function publicationToRow(p: Publication): Record<string, unknown> {
   };
 }
 
-export function postTypeToRow(post: PostType | Publication): Record<string, unknown> {
-  const publication = post as Partial<Publication>;
+export function postTypeToRow(post: PostType): Record<string, unknown> {
   return publicationToRow({
     ...post,
-    exampleImages: publication.exampleImages ?? (post.exampleImage ? [post.exampleImage] : []),
-    guide: publication.guide ?? "",
-    toolIds: publication.toolIds ?? [],
+    exampleImages: normalizePublicationImages(post.exampleImages, post.exampleImage),
+    guide: post.guide ?? "",
+    toolIds: post.toolIds ?? [],
   });
 }
 
