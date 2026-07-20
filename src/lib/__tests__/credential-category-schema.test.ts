@@ -29,7 +29,7 @@ describe.each([
     if (normalization >= 0) {
       expect(normalization).toBeLessThan(trimConstraint);
     } else {
-      expect(sql).toMatch(/credential_categories_name_trimmed[\s\S]*raise notice/i);
+      expect(sql).toMatch(/credential_categories_name_trimmed[\s\S]*raise (?:notice|exception)/i);
     }
     expect(trimConstraint).toBeLessThan(scopedUnique);
   });

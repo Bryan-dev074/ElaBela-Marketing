@@ -30,7 +30,7 @@ describe.each([["canonical schema", schema], ["pending migration", migration]])(
   });
 
   it("indexes activity dates and completed history", () => {
-    expect(sql).toMatch(/create index if not exists daily_task_logs_activity_date_idx/i);
-    expect(sql).toMatch(/create index if not exists daily_task_logs_completed_at_idx/i);
+    expect(sql).toMatch(/create index(?: if not exists)? daily_task_logs_activity_date_idx/i);
+    expect(sql).toMatch(/create index(?: if not exists)? daily_task_logs_completed_at_idx/i);
   });
 });

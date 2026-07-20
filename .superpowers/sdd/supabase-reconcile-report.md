@@ -41,3 +41,20 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - Datos heredados: blancos/duplicados de categorías producen `NOTICE` y omiten la restricción o índice incompatible. Una FK o check con el nombre esperado pero definición distinta produce un error español explícito en vez de reemplazarse.
 - Normalización autorizada: valores inválidos/nulos de tipo o prioridad de proyecto se convierten a `other`/`normal` antes de los checks exactos.
 - Verificación pendiente del usuario: por prohibición expresa no se levantó una base ni se ejecutó el SQL; la última consulta del script manual valida columnas/tablas críticas, RLS, policies, bucket y privilegios sin leer secretos ni filas de usuario.
+
+## Correcciones posteriores al review crítico
+
+- RED focal: `npm test -- src/lib/__tests__/supabase-reconcile-schema.test.ts` produjo 9 fallos esperados sobre reconciliación parcial, objetos homónimos y verificación final incompleta.
+- Las tablas `tool_categories`, `credential_categories` y `daily_task_logs` ahora agregan todas sus columnas faltantes, verifican tipos, reparan únicamente defaults seguros, restauran `NOT NULL`, PK, unicidad, checks y FKs, y abortan con error español cuando el dato obligatorio o incompatible no admite una corrección semántica segura.
+- Los constraints e índices homónimos se comparan por catálogo y definición real. Esto cubre checks, PK/unique, las cinco FKs relevantes, los índices de categorías, índices simples y el índice parcial `projects_completed_at_idx` con columna, orden descendente, null ordering y predicado exactos.
+- Los checks y FKs reconciliados se validan después de comprobar datos huérfanos/incompatibles. Ya no se omiten constraints o índices mediante `NOTICE` ante datos legacy incompatibles: la transacción aborta sin borrar, renombrar ni fusionar datos.
+- La verificación manual final audita 60 columnas (existencia, tipo, nullability y default), RLS incluyendo `credentials`, las 17 policies por rol único, comando, `USING` y `WITH CHECK`, FKs y `ON DELETE`, checks, PK/unique, índices, grants de tablas, los cuatro RPC `SECURITY INVOKER` con ACL autenticada y sin ejecución pública, y la definición completa del bucket.
+- El cuerpo entre marcadores de migración y manual permanece idéntico; los bloques críticos también quedan en paridad con `supabase/schema.sql`.
+
+### Validación fresca del follow-up
+
+- Focal final: 3 archivos, 47/47 pruebas aprobadas; el contrato principal quedó en 33/33.
+- Suite completa: 27 archivos, 245/245 pruebas aprobadas.
+- `npx tsc --noEmit`: aprobado sin salida.
+- `git diff --check`: aprobado.
+- No hay `psql`, `postgres`, `pg_isready`, Docker, Supabase CLI local ni parser SQL instalado en el workspace; por ello no se pudo hacer parse/ejecución PostgreSQL local sin instalar dependencias o tocar un proyecto remoto. No se usó ningún recurso remoto.

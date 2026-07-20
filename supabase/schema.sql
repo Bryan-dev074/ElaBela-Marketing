@@ -192,9 +192,28 @@ begin
   end if;
 end
 $project_completer_fk$;
-create index if not exists projects_completed_at_idx
-  on public.projects (completed_at desc) where status = 'done';
-create index if not exists projects_completed_by_idx on public.projects (completed_by);
+do $projects_completed_at_index$
+declare
+  index_matches boolean;
+begin
+  select not i.indisunique and i.indisvalid and i.indisready
+         and i.indnkeyatts = 1 and i.indnatts = 1
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'completed_atdesc'
+         and i.indoption[0] = 3
+         and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'status=''done'''
+  into index_matches
+  from pg_index i
+  where i.indexrelid = to_regclass('public.projects_completed_at_idx');
+  if to_regclass('public.projects_completed_at_idx') is not null
+     and index_matches is distinct from true then
+    raise exception 'El índice projects_completed_at_idx existe con otra definición.';
+  end if;
+  if to_regclass('public.projects_completed_at_idx') is null then
+    create index if not exists projects_completed_at_idx
+      on public.projects (completed_at desc) where status = 'done';
+  end if;
+end
+$projects_completed_at_index$;
 alter table public.projects enable row level security;
 grant select, insert, update, delete on table public.projects to authenticated;
 drop policy if exists projects_all on public.projects;
@@ -377,49 +396,158 @@ alter table public.post_types add column if not exists guide text not null defau
 alter table public.post_types add column if not exists tool_ids text[] not null default '{}';
 
 create table if not exists public.tool_categories (
-  id text primary key,
+  id text constraint tool_categories_pkey primary key,
   name text not null,
   icon text not null default '✨',
   accent text not null default '#d6ab99',
-  kind text not null default 'link' check (kind in ('prompt', 'link')),
+  kind text not null default 'link',
   sort integer not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint tool_categories_kind_check check (kind in ('prompt', 'link')),
+  constraint tool_categories_name_nonblank check (char_length(btrim(name)) > 0)
 );
-alter table public.tool_categories enable row level security;
+alter table public.tool_categories add column if not exists id text;
+alter table public.tool_categories add column if not exists name text;
+alter table public.tool_categories add column if not exists icon text default '✨';
+alter table public.tool_categories add column if not exists accent text default '#d6ab99';
+alter table public.tool_categories add column if not exists kind text default 'link';
+alter table public.tool_categories add column if not exists sort integer default 0;
+alter table public.tool_categories add column if not exists created_at timestamptz default now();
 
-do $tool_nonblank$
+do $tool_column_types$
+declare
+  incompatible_columns text;
 begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.tool_categories'::regclass
-      and conname = 'tool_categories_name_nonblank'
-  ) then
-    if exists (
-      select 1 from public.tool_categories
-      where name is null or char_length(btrim(name)) = 0
-    ) then
-      raise notice 'No se agregó tool_categories_name_nonblank: existen nombres nulos o en blanco.';
-    else
-      alter table public.tool_categories
-        add constraint tool_categories_name_nonblank check (char_length(btrim(name)) > 0);
-    end if;
+  select string_agg(required.column_name, ', ' order by required.ordinality)
+  into incompatible_columns
+  from unnest(array['id', 'name', 'icon', 'accent', 'kind', 'sort', 'created_at']::text[])
+       with ordinality as required(column_name, ordinality)
+  join pg_attribute attribute
+    on attribute.attrelid = 'public.tool_categories'::regclass
+   and attribute.attname = required.column_name and not attribute.attisdropped
+  where format_type(attribute.atttypid, attribute.atttypmod)
+        <> (array['text', 'text', 'text', 'text', 'text', 'integer', 'timestamp with time zone'])[required.ordinality::integer];
+  if incompatible_columns is not null then
+    raise exception 'Hay columnas con tipos incompatibles en public.tool_categories: %', incompatible_columns;
   end if;
 end
-$tool_nonblank$;
-do $tool_unique$
+$tool_column_types$;
+
+update public.tool_categories set icon = '✨' where icon is null;
+update public.tool_categories set accent = '#d6ab99' where accent is null;
+update public.tool_categories set kind = 'link' where kind is null;
+update public.tool_categories set sort = 0 where sort is null;
+update public.tool_categories set created_at = now() where created_at is null;
+
+do $tool_integrity$
+declare
+  actual_definition text;
+  named_matches boolean;
 begin
+  if exists (
+    select 1 from public.tool_categories
+    where id is null or name is null
+  ) then
+    raise exception 'Faltan valores obligatorios en public.tool_categories (id o name); no existe una corrección semántica segura.';
+  end if;
+  if exists (
+    select 1 from public.tool_categories
+    where char_length(btrim(name)) = 0 or kind not in ('prompt', 'link')
+  ) then
+    raise exception 'Hay valores incompatibles en public.tool_categories (name o kind); corríjalos antes de reintentar.';
+  end if;
+
+  select c.contype = 'p'
+         and cardinality(c.conkey) = 1
+         and a.attname = 'id'
+  into named_matches
+  from pg_constraint c
+  left join pg_attribute a
+    on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+  where c.conrelid = 'public.tool_categories'::regclass
+    and c.conname = 'tool_categories_pkey';
+  if named_matches is false then
+    raise exception 'La restricción tool_categories_pkey existe con otra definición.';
+  end if;
+  if not exists (
+    select 1
+    from pg_constraint c
+    join pg_attribute a
+      on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.conrelid = 'public.tool_categories'::regclass
+      and c.contype = 'p' and cardinality(c.conkey) = 1 and a.attname = 'id'
+  ) then
+    if exists (select id from public.tool_categories group by id having count(*) > 1) then
+      raise exception 'No se puede crear la clave primaria de public.tool_categories: existen IDs duplicados.';
+    end if;
+    alter table public.tool_categories
+      add constraint tool_categories_pkey primary key (id);
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition
+  from pg_constraint
+  where conrelid = 'public.tool_categories'::regclass
+    and conname = 'tool_categories_kind_check';
+  if actual_definition is null then
+    alter table public.tool_categories
+      add constraint tool_categories_kind_check check (kind in ('prompt', 'link'));
+  elsif actual_definition <> 'check((kind=any(array[''prompt''::text,''link''::text])))' then
+    raise exception 'La restricción tool_categories_kind_check existe con otra definición: %', actual_definition;
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition
+  from pg_constraint
+  where conrelid = 'public.tool_categories'::regclass
+    and conname = 'tool_categories_name_nonblank';
+  if actual_definition is null then
+    alter table public.tool_categories
+      add constraint tool_categories_name_nonblank check (char_length(btrim(name)) > 0);
+  elsif actual_definition <> 'check((char_length(btrim(name))>0))' then
+    raise exception 'La restricción tool_categories_name_nonblank existe con otra definición: %', actual_definition;
+  end if;
+end
+$tool_integrity$;
+
+alter table public.tool_categories alter column icon set default '✨';
+alter table public.tool_categories alter column accent set default '#d6ab99';
+alter table public.tool_categories alter column kind set default 'link';
+alter table public.tool_categories alter column sort set default 0;
+alter table public.tool_categories alter column created_at set default now();
+alter table public.tool_categories alter column id set not null;
+alter table public.tool_categories alter column name set not null;
+alter table public.tool_categories alter column icon set not null;
+alter table public.tool_categories alter column accent set not null;
+alter table public.tool_categories alter column kind set not null;
+alter table public.tool_categories alter column sort set not null;
+alter table public.tool_categories alter column created_at set not null;
+alter table public.tool_categories enable row level security;
+
+do $tool_unique$
+declare
+  index_matches boolean;
+begin
+  select i.indisunique and i.indisvalid and i.indisready
+         and i.indnkeyatts = 1 and i.indnatts = 1
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'lower(btrim(name))'
+         and i.indpred is null
+  into index_matches
+  from pg_index i
+  where i.indexrelid = to_regclass('public.tool_categories_name_ci_unique');
+  if to_regclass('public.tool_categories_name_ci_unique') is not null
+     and index_matches is distinct from true then
+    raise exception 'El índice tool_categories_name_ci_unique existe con otra definición.';
+  end if;
   if to_regclass('public.tool_categories_name_ci_unique') is null then
     if exists (
       select 1 from public.tool_categories
-      where name is not null
-      group by lower(btrim(name))
-      having count(*) > 1
+      group by lower(btrim(name)) having count(*) > 1
     ) then
-      raise notice 'No se creó tool_categories_name_ci_unique: existen nombres duplicados sin distinguir mayúsculas.';
-    else
-      create unique index tool_categories_name_ci_unique
-        on public.tool_categories (lower(btrim(name)));
+      raise exception 'No se puede crear el índice tool_categories_name_ci_unique: existen nombres duplicados sin distinguir mayúsculas.';
     end if;
+    create unique index tool_categories_name_ci_unique
+      on public.tool_categories (lower(btrim(name)));
   end if;
 end
 $tool_unique$;
@@ -447,6 +575,7 @@ begin
       and source_column.attname = 'category_id'
       and c.confrelid = 'public.tool_categories'::regclass
       and target_column.attname = 'id'
+      and c.confdeltype = 'a'
   ) then
     if exists (select 1 from pg_constraint where conrelid = 'public.tool_items'::regclass and conname = 'tool_items_category_id_fkey') then
       raise exception 'La restricción tool_items_category_id_fkey existe con otra definición.';
@@ -456,7 +585,6 @@ begin
   end if;
 end
 $tool_category_fk$;
-create index if not exists tool_items_category_id_idx on public.tool_items (category_id);
 update public.tool_items
 set category_id = case lower(btrim(category))
   when 'gems' then 'ia'
@@ -600,24 +728,261 @@ alter table public.brand_assets add column if not exists file_format text;
 alter table public.brand_assets add column if not exists storage_path text;
 
 create table if not exists public.credential_categories (
-  id text primary key,
+  id text constraint credential_categories_pkey primary key,
   name text not null,
   icon text not null default '🔑',
-  scope text not null check (scope in ('shared', 'private')),
-  owner_id uuid references public.profiles(id) on delete cascade,
+  scope text not null,
+  owner_id uuid,
   sort integer not null default 0,
   created_at timestamptz not null default now(),
-  check ((scope = 'shared' and owner_id is null) or (scope = 'private' and owner_id is not null))
+  constraint credential_categories_scope_check check (scope in ('shared', 'private')),
+  constraint credential_categories_owner_scope_check check (
+    (scope = 'shared' and owner_id is null)
+    or (scope = 'private' and owner_id is not null)
+  ),
+  constraint credential_categories_name_nonblank check (char_length(btrim(name)) > 0),
+  constraint credential_categories_name_trimmed check (name = btrim(name)),
+  constraint credential_categories_owner_id_fkey foreign key (owner_id)
+    references public.profiles(id) on delete cascade
 );
+alter table public.credential_categories add column if not exists id text;
+alter table public.credential_categories add column if not exists name text;
+alter table public.credential_categories add column if not exists icon text default '🔑';
+alter table public.credential_categories add column if not exists scope text;
+alter table public.credential_categories add column if not exists owner_id uuid;
+alter table public.credential_categories add column if not exists sort integer default 0;
+alter table public.credential_categories add column if not exists created_at timestamptz default now();
+
+do $credential_column_types$
+declare
+  incompatible_columns text;
+begin
+  select string_agg(required.column_name, ', ' order by required.ordinality)
+  into incompatible_columns
+  from unnest(array['id', 'name', 'icon', 'scope', 'owner_id', 'sort', 'created_at']::text[])
+       with ordinality as required(column_name, ordinality)
+  join pg_attribute attribute
+    on attribute.attrelid = 'public.credential_categories'::regclass
+   and attribute.attname = required.column_name and not attribute.attisdropped
+  where format_type(attribute.atttypid, attribute.atttypmod)
+        <> (array['text', 'text', 'text', 'text', 'uuid', 'integer', 'timestamp with time zone'])[required.ordinality::integer];
+  if incompatible_columns is not null then
+    raise exception 'Hay columnas con tipos incompatibles en public.credential_categories: %', incompatible_columns;
+  end if;
+end
+$credential_column_types$;
+
+update public.credential_categories set icon = '🔑' where icon is null;
+update public.credential_categories set sort = 0 where sort is null;
+update public.credential_categories set created_at = now() where created_at is null;
+
+do $credential_integrity$
+declare
+  actual_definition text;
+  named_matches boolean;
+begin
+  if exists (
+    select 1 from public.credential_categories
+    where id is null or name is null or scope is null
+  ) then
+    raise exception 'Faltan valores obligatorios en public.credential_categories (id, name o scope); no existe una corrección semántica segura.';
+  end if;
+  if exists (
+    select 1 from public.credential_categories
+    where scope not in ('shared', 'private')
+       or char_length(btrim(name)) = 0
+       or name is distinct from btrim(name)
+       or (scope = 'shared' and owner_id is not null)
+       or (scope = 'private' and owner_id is null)
+  ) then
+    raise exception 'Hay valores incompatibles en public.credential_categories; corríjalos antes de reintentar.';
+  end if;
+
+  select c.contype = 'p' and cardinality(c.conkey) = 1 and a.attname = 'id'
+  into named_matches
+  from pg_constraint c
+  left join pg_attribute a
+    on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+  where c.conrelid = 'public.credential_categories'::regclass
+    and c.conname = 'credential_categories_pkey';
+  if named_matches is false then
+    raise exception 'La restricción credential_categories_pkey existe con otra definición.';
+  end if;
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.conrelid = 'public.credential_categories'::regclass
+      and c.contype = 'p' and cardinality(c.conkey) = 1 and a.attname = 'id'
+  ) then
+    if exists (select id from public.credential_categories group by id having count(*) > 1) then
+      raise exception 'No se puede crear la clave primaria de public.credential_categories: existen IDs duplicados.';
+    end if;
+    alter table public.credential_categories
+      add constraint credential_categories_pkey primary key (id);
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition from pg_constraint
+  where conrelid = 'public.credential_categories'::regclass
+    and conname = 'credential_categories_scope_check';
+  if actual_definition is null then
+    alter table public.credential_categories add constraint credential_categories_scope_check
+      check (scope in ('shared', 'private'));
+  elsif actual_definition <> 'check((scope=any(array[''shared''::text,''private''::text])))' then
+    raise exception 'La restricción credential_categories_scope_check existe con otra definición: %', actual_definition;
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition from pg_constraint
+  where conrelid = 'public.credential_categories'::regclass
+    and conname = 'credential_categories_owner_scope_check';
+  if actual_definition is null then
+    alter table public.credential_categories add constraint credential_categories_owner_scope_check check (
+      (scope = 'shared' and owner_id is null)
+      or (scope = 'private' and owner_id is not null)
+    );
+  elsif actual_definition <> 'check((((scope=''shared''::text)and(owner_idisnull))or((scope=''private''::text)and(owner_idisnotnull))))' then
+    raise exception 'La restricción credential_categories_owner_scope_check existe con otra definición: %', actual_definition;
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition from pg_constraint
+  where conrelid = 'public.credential_categories'::regclass
+    and conname = 'credential_categories_name_nonblank';
+  if actual_definition is null then
+    alter table public.credential_categories add constraint credential_categories_name_nonblank
+      check (char_length(btrim(name)) > 0);
+  elsif actual_definition <> 'check((char_length(btrim(name))>0))' then
+    raise exception 'La restricción credential_categories_name_nonblank existe con otra definición: %', actual_definition;
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition from pg_constraint
+  where conrelid = 'public.credential_categories'::regclass
+    and conname = 'credential_categories_name_trimmed';
+  if actual_definition is null then
+    alter table public.credential_categories add constraint credential_categories_name_trimmed
+      check (name = btrim(name));
+  elsif actual_definition <> 'check((name=btrim(name)))' then
+    raise exception 'La restricción credential_categories_name_trimmed existe con otra definición: %', actual_definition;
+  end if;
+
+  select c.contype = 'f' and cardinality(c.conkey) = 1
+         and source_column.attname = 'owner_id'
+         and c.confrelid = 'public.profiles'::regclass
+         and target_column.attname = 'id' and c.confdeltype = 'c'
+  into named_matches
+  from pg_constraint c
+  left join pg_attribute source_column
+    on source_column.attrelid = c.conrelid and source_column.attnum = c.conkey[1]
+  left join pg_attribute target_column
+    on target_column.attrelid = c.confrelid and target_column.attnum = c.confkey[1]
+  where c.conrelid = 'public.credential_categories'::regclass
+    and c.conname = 'credential_categories_owner_id_fkey';
+  if named_matches is false then
+    raise exception 'La restricción credential_categories_owner_id_fkey existe con otra definición.';
+  end if;
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_attribute source_column
+      on source_column.attrelid = c.conrelid and source_column.attnum = c.conkey[1]
+    join pg_attribute target_column
+      on target_column.attrelid = c.confrelid and target_column.attnum = c.confkey[1]
+    where c.conrelid = 'public.credential_categories'::regclass
+      and c.contype = 'f' and cardinality(c.conkey) = 1
+      and source_column.attname = 'owner_id'
+      and c.confrelid = 'public.profiles'::regclass
+      and target_column.attname = 'id' and c.confdeltype = 'c'
+  ) then
+    alter table public.credential_categories
+      add constraint credential_categories_owner_id_fkey
+      foreign key (owner_id) references public.profiles(id)
+      on delete cascade not valid;
+  end if;
+end
+$credential_integrity$;
+
+alter table public.credential_categories alter column icon set default '🔑';
+alter table public.credential_categories alter column sort set default 0;
+alter table public.credential_categories alter column created_at set default now();
+alter table public.credential_categories alter column id set not null;
+alter table public.credential_categories alter column name set not null;
+alter table public.credential_categories alter column icon set not null;
+alter table public.credential_categories alter column scope set not null;
+alter table public.credential_categories alter column sort set not null;
+alter table public.credential_categories alter column created_at set not null;
 alter table public.credential_categories enable row level security;
+
+do $credential_shared_unique$
+declare
+  index_matches boolean;
+begin
+  select i.indisunique and i.indisvalid and i.indisready
+         and i.indnkeyatts = 1 and i.indnatts = 1
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'lower(btrim(name))'
+         and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'scope=''shared'''
+  into index_matches
+  from pg_index i
+  where i.indexrelid = to_regclass('public.credential_categories_shared_name_ci_unique');
+  if to_regclass('public.credential_categories_shared_name_ci_unique') is not null
+     and index_matches is distinct from true then
+    raise exception 'El índice credential_categories_shared_name_ci_unique existe con otra definición.';
+  end if;
+  if to_regclass('public.credential_categories_shared_name_ci_unique') is null then
+    if exists (
+      select 1 from public.credential_categories where scope = 'shared'
+      group by lower(btrim(name)) having count(*) > 1
+    ) then
+      raise exception 'No se puede crear el índice credential_categories_shared_name_ci_unique: existen nombres compartidos duplicados.';
+    end if;
+    create unique index credential_categories_shared_name_ci_unique
+      on public.credential_categories (lower(btrim(name))) where scope = 'shared';
+  end if;
+end
+$credential_shared_unique$;
+
+do $credential_private_unique$
+declare
+  index_matches boolean;
+begin
+  select i.indisunique and i.indisvalid and i.indisready
+         and i.indnkeyatts = 2 and i.indnatts = 2
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'owner_id'
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 2, false)), '\s+', '', 'g') = 'lower(btrim(name))'
+         and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'scope=''private'''
+  into index_matches
+  from pg_index i
+  where i.indexrelid = to_regclass('public.credential_categories_private_name_ci_unique');
+  if to_regclass('public.credential_categories_private_name_ci_unique') is not null
+     and index_matches is distinct from true then
+    raise exception 'El índice credential_categories_private_name_ci_unique existe con otra definición.';
+  end if;
+  if to_regclass('public.credential_categories_private_name_ci_unique') is null then
+    if exists (
+      select 1 from public.credential_categories where scope = 'private'
+      group by owner_id, lower(btrim(name)) having count(*) > 1
+    ) then
+      raise exception 'No se puede crear el índice credential_categories_private_name_ci_unique: existen nombres privados duplicados.';
+    end if;
+    create unique index credential_categories_private_name_ci_unique
+      on public.credential_categories (owner_id, lower(btrim(name))) where scope = 'private';
+  end if;
+end
+$credential_private_unique$;
+
 alter table public.credentials add column if not exists category_id text;
+
 do $credential_category_fk$
 begin
   if not exists (
     select 1
     from pg_constraint c
-    join pg_attribute source_column on source_column.attrelid = c.conrelid and source_column.attnum = c.conkey[1]
-    join pg_attribute target_column on target_column.attrelid = c.confrelid and target_column.attnum = c.confkey[1]
+    join pg_attribute source_column
+      on source_column.attrelid = c.conrelid
+     and source_column.attnum = c.conkey[1]
+    join pg_attribute target_column
+      on target_column.attrelid = c.confrelid
+     and target_column.attnum = c.confkey[1]
     where c.conrelid = 'public.credentials'::regclass
       and c.contype = 'f'
       and cardinality(c.conkey) = 1
@@ -626,89 +991,20 @@ begin
       and target_column.attname = 'id'
       and c.confdeltype = 'n'
   ) then
-    if exists (select 1 from pg_constraint where conrelid = 'public.credentials'::regclass and conname = 'credentials_category_id_fkey') then
+    if exists (
+      select 1 from pg_constraint
+      where conrelid = 'public.credentials'::regclass
+        and conname = 'credentials_category_id_fkey'
+    ) then
       raise exception 'La restricción credentials_category_id_fkey existe con otra definición.';
     end if;
-    alter table public.credentials add constraint credentials_category_id_fkey
+    alter table public.credentials
+      add constraint credentials_category_id_fkey
       foreign key (category_id) references public.credential_categories(id)
       on delete set null not valid;
   end if;
 end
 $credential_category_fk$;
-create index if not exists credentials_category_id_idx on public.credentials (category_id);
-
-do $credential_nonblank$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.credential_categories'::regclass
-      and conname = 'credential_categories_name_nonblank'
-  ) then
-    if exists (
-      select 1 from public.credential_categories
-      where name is null or char_length(btrim(name)) = 0
-    ) then
-      raise notice 'No se agregó credential_categories_name_nonblank: existen nombres nulos o en blanco.';
-    else
-      alter table public.credential_categories
-        add constraint credential_categories_name_nonblank check (char_length(btrim(name)) > 0);
-    end if;
-  end if;
-end
-$credential_nonblank$;
-do $credential_trimmed$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.credential_categories'::regclass
-      and conname = 'credential_categories_name_trimmed'
-  ) then
-    if exists (
-      select 1 from public.credential_categories
-      where name is null or name is distinct from btrim(name)
-    ) then
-      raise notice 'No se agregó credential_categories_name_trimmed: existen nombres heredados sin recortar.';
-    else
-      alter table public.credential_categories
-        add constraint credential_categories_name_trimmed check (name = btrim(name));
-    end if;
-  end if;
-end
-$credential_trimmed$;
-do $credential_shared_unique$
-begin
-  if to_regclass('public.credential_categories_shared_name_ci_unique') is null then
-    if exists (
-      select 1 from public.credential_categories
-      where scope = 'shared' and name is not null
-      group by lower(btrim(name))
-      having count(*) > 1
-    ) then
-      raise notice 'No se creó credential_categories_shared_name_ci_unique: existen nombres compartidos duplicados.';
-    else
-      create unique index credential_categories_shared_name_ci_unique
-        on public.credential_categories (lower(btrim(name))) where scope = 'shared';
-    end if;
-  end if;
-end
-$credential_shared_unique$;
-do $credential_private_unique$
-begin
-  if to_regclass('public.credential_categories_private_name_ci_unique') is null then
-    if exists (
-      select 1 from public.credential_categories
-      where scope = 'private' and name is not null
-      group by owner_id, lower(btrim(name))
-      having count(*) > 1
-    ) then
-      raise notice 'No se creó credential_categories_private_name_ci_unique: existen nombres privados duplicados.';
-    else
-      create unique index credential_categories_private_name_ci_unique
-        on public.credential_categories (owner_id, lower(btrim(name))) where scope = 'private';
-    end if;
-  end if;
-end
-$credential_private_unique$;
 
 create or replace function public.enforce_credential_category_compatibility()
 returns trigger
@@ -873,40 +1169,188 @@ end;
 $$;
 
 create table if not exists public.daily_task_logs (
-  id uuid primary key default gen_random_uuid(),
+  id uuid constraint daily_task_logs_pkey primary key default gen_random_uuid(),
   task_id text not null,
   activity_date date not null,
-  state text not null default 'todo' check (state in ('todo', 'doing', 'done')),
+  state text not null default 'todo',
   task_name_snapshot text not null,
   task_icon_snapshot text not null default '✨',
   assignee_snapshot text,
   completed_by uuid,
   completed_at timestamptz,
   updated_at timestamptz not null default now(),
-  unique (task_id, activity_date)
+  constraint daily_task_logs_state_check check (state in ('todo', 'doing', 'done')),
+  constraint daily_task_logs_task_activity_unique unique (task_id, activity_date),
+  constraint daily_task_logs_completion_consistency check (
+    (state = 'done' and completed_at is not null)
+    or (state <> 'done' and completed_by is null and completed_at is null)
+  )
 );
-do $$
+alter table public.daily_task_logs add column if not exists id uuid default gen_random_uuid();
+alter table public.daily_task_logs add column if not exists task_id text;
+alter table public.daily_task_logs add column if not exists activity_date date;
+alter table public.daily_task_logs add column if not exists state text default 'todo';
+alter table public.daily_task_logs add column if not exists task_name_snapshot text;
+alter table public.daily_task_logs add column if not exists task_icon_snapshot text default '✨';
+alter table public.daily_task_logs add column if not exists assignee_snapshot text;
+alter table public.daily_task_logs add column if not exists completed_by uuid;
+alter table public.daily_task_logs add column if not exists completed_at timestamptz;
+alter table public.daily_task_logs add column if not exists updated_at timestamptz default now();
+
+do $daily_log_column_types$
+declare
+  incompatible_columns text;
 begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.daily_task_logs'::regclass
-      and conname = 'daily_task_logs_completion_consistency'
-  ) then
-    alter table public.daily_task_logs
-      add constraint daily_task_logs_completion_consistency check (
-        (state = 'done' and completed_at is not null)
-        or (state <> 'done' and completed_by is null and completed_at is null)
-      );
+  select string_agg(required.column_name, ', ' order by required.ordinality)
+  into incompatible_columns
+  from unnest(array[
+    'id', 'task_id', 'activity_date', 'state', 'task_name_snapshot',
+    'task_icon_snapshot', 'assignee_snapshot', 'completed_by', 'completed_at', 'updated_at'
+  ]::text[]) with ordinality as required(column_name, ordinality)
+  join pg_attribute attribute
+    on attribute.attrelid = 'public.daily_task_logs'::regclass
+   and attribute.attname = required.column_name and not attribute.attisdropped
+  where format_type(attribute.atttypid, attribute.atttypmod) <> (array[
+    'uuid', 'text', 'date', 'text', 'text', 'text', 'text', 'uuid',
+    'timestamp with time zone', 'timestamp with time zone'
+  ])[required.ordinality::integer];
+  if incompatible_columns is not null then
+    raise exception 'Hay columnas con tipos incompatibles en public.daily_task_logs: %', incompatible_columns;
   end if;
 end
-$$;
+$daily_log_column_types$;
+
+update public.daily_task_logs set id = gen_random_uuid() where id is null;
+update public.daily_task_logs set state = 'todo' where state is null;
+update public.daily_task_logs set task_icon_snapshot = '✨' where task_icon_snapshot is null;
+update public.daily_task_logs set updated_at = now() where updated_at is null;
+
+do $daily_log_integrity$
+declare
+  actual_definition text;
+  named_matches boolean;
+begin
+  if exists (
+    select 1 from public.daily_task_logs
+    where task_id is null or activity_date is null or task_name_snapshot is null
+  ) then
+    raise exception 'Faltan valores obligatorios en public.daily_task_logs (task_id, activity_date o task_name_snapshot); no existe una corrección semántica segura.';
+  end if;
+  if exists (
+    select 1 from public.daily_task_logs
+    where state not in ('todo', 'doing', 'done')
+       or (state = 'done' and completed_at is null)
+       or (state <> 'done' and (completed_by is not null or completed_at is not null))
+  ) then
+    raise exception 'Hay valores incompatibles en public.daily_task_logs (state o datos de finalización); corríjalos antes de reintentar.';
+  end if;
+
+  select c.contype = 'p' and cardinality(c.conkey) = 1 and a.attname = 'id'
+  into named_matches
+  from pg_constraint c
+  left join pg_attribute a
+    on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+  where c.conrelid = 'public.daily_task_logs'::regclass
+    and c.conname = 'daily_task_logs_pkey';
+  if named_matches is false then
+    raise exception 'La restricción daily_task_logs_pkey existe con otra definición.';
+  end if;
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.conrelid = 'public.daily_task_logs'::regclass
+      and c.contype = 'p' and cardinality(c.conkey) = 1 and a.attname = 'id'
+  ) then
+    if exists (select id from public.daily_task_logs group by id having count(*) > 1) then
+      raise exception 'No se puede crear la clave primaria de public.daily_task_logs: existen IDs duplicados.';
+    end if;
+    alter table public.daily_task_logs
+      add constraint daily_task_logs_pkey primary key (id);
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition from pg_constraint
+  where conrelid = 'public.daily_task_logs'::regclass
+    and conname = 'daily_task_logs_state_check';
+  if actual_definition is null then
+    alter table public.daily_task_logs add constraint daily_task_logs_state_check
+      check (state in ('todo', 'doing', 'done'));
+  elsif actual_definition <> 'check((state=any(array[''todo''::text,''doing''::text,''done''::text])))' then
+    raise exception 'La restricción daily_task_logs_state_check existe con otra definición: %', actual_definition;
+  end if;
+
+  select c.contype = 'u' and cardinality(c.conkey) = 2
+         and first_column.attname = 'task_id'
+         and second_column.attname = 'activity_date'
+  into named_matches
+  from pg_constraint c
+  left join pg_attribute first_column
+    on first_column.attrelid = c.conrelid and first_column.attnum = c.conkey[1]
+  left join pg_attribute second_column
+    on second_column.attrelid = c.conrelid and second_column.attnum = c.conkey[2]
+  where c.conrelid = 'public.daily_task_logs'::regclass
+    and c.conname = 'daily_task_logs_task_activity_unique';
+  if named_matches is false then
+    raise exception 'La restricción daily_task_logs_task_activity_unique existe con otra definición.';
+  end if;
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_attribute first_column
+      on first_column.attrelid = c.conrelid and first_column.attnum = c.conkey[1]
+    join pg_attribute second_column
+      on second_column.attrelid = c.conrelid and second_column.attnum = c.conkey[2]
+    where c.conrelid = 'public.daily_task_logs'::regclass
+      and c.contype = 'u' and cardinality(c.conkey) = 2
+      and first_column.attname = 'task_id' and second_column.attname = 'activity_date'
+  ) then
+    if exists (
+      select 1 from public.daily_task_logs
+      group by task_id, activity_date having count(*) > 1
+    ) then
+      raise exception 'No se puede crear la unicidad de public.daily_task_logs: existen task_id y activity_date duplicados.';
+    end if;
+    alter table public.daily_task_logs add constraint daily_task_logs_task_activity_unique
+      unique (task_id, activity_date);
+  end if;
+
+  select regexp_replace(lower(pg_get_constraintdef(oid)), '\s+', '', 'g')
+  into actual_definition from pg_constraint
+  where conrelid = 'public.daily_task_logs'::regclass
+    and conname = 'daily_task_logs_completion_consistency';
+  if actual_definition is null then
+    alter table public.daily_task_logs add constraint daily_task_logs_completion_consistency check (
+      (state = 'done' and completed_at is not null)
+      or (state <> 'done' and completed_by is null and completed_at is null)
+    );
+  elsif actual_definition <> 'check((((state=''done''::text)and(completed_atisnotnull))or((state<>''done''::text)and(completed_byisnull)and(completed_atisnull))))' then
+    raise exception 'La restricción daily_task_logs_completion_consistency existe con otra definición: %', actual_definition;
+  end if;
+end
+$daily_log_integrity$;
+
+alter table public.daily_task_logs alter column id set default gen_random_uuid();
+alter table public.daily_task_logs alter column state set default 'todo';
+alter table public.daily_task_logs alter column task_icon_snapshot set default '✨';
+alter table public.daily_task_logs alter column updated_at set default now();
+alter table public.daily_task_logs alter column id set not null;
+alter table public.daily_task_logs alter column task_id set not null;
+alter table public.daily_task_logs alter column activity_date set not null;
+alter table public.daily_task_logs alter column state set not null;
+alter table public.daily_task_logs alter column task_name_snapshot set not null;
+alter table public.daily_task_logs alter column task_icon_snapshot set not null;
+alter table public.daily_task_logs alter column updated_at set not null;
+
 do $daily_log_completer_fk$
 begin
   if not exists (
     select 1
     from pg_constraint c
-    join pg_attribute source_column on source_column.attrelid = c.conrelid and source_column.attnum = c.conkey[1]
-    join pg_attribute target_column on target_column.attrelid = c.confrelid and target_column.attnum = c.confkey[1]
+    join pg_attribute source_column
+      on source_column.attrelid = c.conrelid
+     and source_column.attnum = c.conkey[1]
+    join pg_attribute target_column
+      on target_column.attrelid = c.confrelid
+     and target_column.attnum = c.confkey[1]
     where c.conrelid = 'public.daily_task_logs'::regclass
       and c.contype = 'f'
       and cardinality(c.conkey) = 1
@@ -915,21 +1359,200 @@ begin
       and target_column.attname = 'id'
       and c.confdeltype = 'n'
   ) then
-    if exists (select 1 from pg_constraint where conrelid = 'public.daily_task_logs'::regclass and conname = 'daily_task_logs_completed_by_fkey') then
+    if exists (
+      select 1 from pg_constraint
+      where conrelid = 'public.daily_task_logs'::regclass
+        and conname = 'daily_task_logs_completed_by_fkey'
+    ) then
       raise exception 'La restricción daily_task_logs_completed_by_fkey existe con otra definición.';
     end if;
-    alter table public.daily_task_logs add constraint daily_task_logs_completed_by_fkey
+    alter table public.daily_task_logs
+      add constraint daily_task_logs_completed_by_fkey
       foreign key (completed_by) references public.profiles(id)
       on delete set null not valid;
   end if;
 end
 $daily_log_completer_fk$;
-create index if not exists daily_task_logs_activity_date_idx
-  on public.daily_task_logs (activity_date);
-create index if not exists daily_task_logs_completed_at_idx
-  on public.daily_task_logs (completed_at) where state = 'done';
-create index if not exists daily_task_logs_completed_by_idx on public.daily_task_logs (completed_by);
+
 alter table public.daily_task_logs enable row level security;
+
+do $simple_index_integrity$
+declare
+  required record;
+  index_matches boolean;
+begin
+  for required in
+    select * from (values
+      ('tool_items_category_id_idx', 'public.tool_items', 'category_id', 'none',
+       'create index tool_items_category_id_idx on public.tool_items (category_id)'),
+      ('credentials_category_id_idx', 'public.credentials', 'category_id', 'none',
+       'create index credentials_category_id_idx on public.credentials (category_id)'),
+      ('daily_task_logs_activity_date_idx', 'public.daily_task_logs', 'activity_date', 'none',
+       'create index daily_task_logs_activity_date_idx on public.daily_task_logs (activity_date)'),
+      ('daily_task_logs_completed_at_idx', 'public.daily_task_logs', 'completed_at', 'state_done',
+       'create index daily_task_logs_completed_at_idx on public.daily_task_logs (completed_at) where state = ''done'''),
+      ('daily_task_logs_completed_by_idx', 'public.daily_task_logs', 'completed_by', 'none',
+       'create index daily_task_logs_completed_by_idx on public.daily_task_logs (completed_by)'),
+      ('projects_completed_by_idx', 'public.projects', 'completed_by', 'none',
+       'create index projects_completed_by_idx on public.projects (completed_by)')
+    ) as expected(index_name, table_name, column_name, predicate_key, create_sql)
+  loop
+    select not index_state.indisunique
+           and index_state.indisvalid and index_state.indisready
+           and index_state.indrelid = to_regclass(required.table_name)
+           and index_state.indnkeyatts = 1 and index_state.indnatts = 1
+           and regexp_replace(lower(pg_get_indexdef(index_state.indexrelid, 1, false)), '\s+', '', 'g') = required.column_name
+           and index_state.indoption[0] = 0
+           and case required.predicate_key
+             when 'none' then index_state.indpred is null
+             when 'state_done' then
+               replace(replace(replace(regexp_replace(lower(pg_get_expr(index_state.indpred, index_state.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'state=''done'''
+             else false
+           end
+    into index_matches
+    from pg_index index_state
+    where index_state.indexrelid = to_regclass('public.' || required.index_name);
+
+    if to_regclass('public.' || required.index_name) is not null
+       and index_matches is distinct from true then
+      raise exception 'El índice % existe con otra definición.', required.index_name;
+    end if;
+    if to_regclass('public.' || required.index_name) is null then
+      execute required.create_sql;
+    end if;
+  end loop;
+end
+$simple_index_integrity$;
+
+do $named_foreign_key_integrity$
+declare
+  required record;
+begin
+  for required in
+    select * from (values
+      ('tool_items_category_id_fkey', 'public.tool_items', 'category_id', 'public.tool_categories', 'id', 'a'),
+      ('credentials_category_id_fkey', 'public.credentials', 'category_id', 'public.credential_categories', 'id', 'n'),
+      ('daily_task_logs_completed_by_fkey', 'public.daily_task_logs', 'completed_by', 'public.profiles', 'id', 'n'),
+      ('projects_completed_by_fkey', 'public.projects', 'completed_by', 'public.profiles', 'id', 'n'),
+      ('credential_categories_owner_id_fkey', 'public.credential_categories', 'owner_id', 'public.profiles', 'id', 'c')
+    ) as expected(constraint_name, source_table, source_column, target_table, target_column, delete_action)
+  loop
+    if exists (
+      select 1 from pg_constraint named
+      where named.conrelid = to_regclass(required.source_table)
+        and named.conname = required.constraint_name
+    ) and not exists (
+      select 1
+      from pg_constraint named
+      join pg_attribute source_column
+        on source_column.attrelid = named.conrelid and source_column.attnum = named.conkey[1]
+      join pg_attribute target_column
+        on target_column.attrelid = named.confrelid and target_column.attnum = named.confkey[1]
+      where named.conrelid = to_regclass(required.source_table)
+        and named.conname = required.constraint_name
+        and named.contype = 'f' and cardinality(named.conkey) = 1
+        and source_column.attname = required.source_column
+        and named.confrelid = to_regclass(required.target_table)
+        and target_column.attname = required.target_column
+        and named.confdeltype = required.delete_action
+    ) then
+      raise exception 'La restricción % existe con otra definición.', required.constraint_name;
+    end if;
+  end loop;
+end
+$named_foreign_key_integrity$;
+
+do $foreign_key_validation$
+declare
+  foreign_key record;
+begin
+  if exists (
+    select 1 from public.tool_items child
+    left join public.tool_categories parent on parent.id = child.category_id
+    where child.category_id is not null and parent.id is null
+  ) then
+    raise exception 'Hay referencias incompatibles en public.tool_items.category_id; corríjalas antes de reintentar.';
+  end if;
+  if exists (
+    select 1 from public.credentials child
+    left join public.credential_categories parent on parent.id = child.category_id
+    where child.category_id is not null and parent.id is null
+  ) then
+    raise exception 'Hay referencias incompatibles en public.credentials.category_id; corríjalas antes de reintentar.';
+  end if;
+  if exists (
+    select 1 from public.credential_categories child
+    left join public.profiles parent on parent.id = child.owner_id
+    where child.owner_id is not null and parent.id is null
+  ) then
+    raise exception 'Hay referencias incompatibles en public.credential_categories.owner_id; corríjalas antes de reintentar.';
+  end if;
+  if exists (
+    select 1 from public.daily_task_logs child
+    left join public.profiles parent on parent.id = child.completed_by
+    where child.completed_by is not null and parent.id is null
+  ) then
+    raise exception 'Hay referencias incompatibles en public.daily_task_logs.completed_by; corríjalas antes de reintentar.';
+  end if;
+  if exists (
+    select 1 from public.projects child
+    left join public.profiles parent on parent.id = child.completed_by
+    where child.completed_by is not null and parent.id is null
+  ) then
+    raise exception 'Hay referencias incompatibles en public.projects.completed_by; corríjalas antes de reintentar.';
+  end if;
+
+  for foreign_key in
+    select c.conrelid::regclass as table_name, c.conname
+    from pg_constraint c
+    join pg_attribute source_column
+      on source_column.attrelid = c.conrelid and source_column.attnum = c.conkey[1]
+    join pg_attribute target_column
+      on target_column.attrelid = c.confrelid and target_column.attnum = c.confkey[1]
+    where c.contype = 'f' and cardinality(c.conkey) = 1 and not c.convalidated
+      and (
+        (c.conrelid = 'public.tool_items'::regclass and source_column.attname = 'category_id'
+         and c.confrelid = 'public.tool_categories'::regclass and target_column.attname = 'id' and c.confdeltype = 'a')
+        or (c.conrelid = 'public.credentials'::regclass and source_column.attname = 'category_id'
+            and c.confrelid = 'public.credential_categories'::regclass and target_column.attname = 'id' and c.confdeltype = 'n')
+        or (c.conrelid = 'public.credential_categories'::regclass and source_column.attname = 'owner_id'
+            and c.confrelid = 'public.profiles'::regclass and target_column.attname = 'id' and c.confdeltype = 'c')
+        or (c.conrelid = 'public.daily_task_logs'::regclass and source_column.attname = 'completed_by'
+            and c.confrelid = 'public.profiles'::regclass and target_column.attname = 'id' and c.confdeltype = 'n')
+        or (c.conrelid = 'public.projects'::regclass and source_column.attname = 'completed_by'
+            and c.confrelid = 'public.profiles'::regclass and target_column.attname = 'id' and c.confdeltype = 'n')
+      )
+  loop
+    execute format('alter table %s validate constraint %I', foreign_key.table_name, foreign_key.conname);
+  end loop;
+end
+$foreign_key_validation$;
+
+do $check_constraint_validation$
+declare
+  check_constraint record;
+begin
+  for check_constraint in
+    select c.conrelid::regclass as table_name, c.conname
+    from pg_constraint c
+    where c.contype = 'c' and not c.convalidated
+      and (c.conrelid, c.conname) in (
+        ('public.tool_categories'::regclass, 'tool_categories_kind_check'),
+        ('public.tool_categories'::regclass, 'tool_categories_name_nonblank'),
+        ('public.credential_categories'::regclass, 'credential_categories_scope_check'),
+        ('public.credential_categories'::regclass, 'credential_categories_owner_scope_check'),
+        ('public.credential_categories'::regclass, 'credential_categories_name_nonblank'),
+        ('public.credential_categories'::regclass, 'credential_categories_name_trimmed'),
+        ('public.daily_task_logs'::regclass, 'daily_task_logs_state_check'),
+        ('public.daily_task_logs'::regclass, 'daily_task_logs_completion_consistency'),
+        ('public.projects'::regclass, 'projects_project_type_check'),
+        ('public.projects'::regclass, 'projects_priority_check')
+      )
+  loop
+    execute format('alter table %s validate constraint %I', check_constraint.table_name, check_constraint.conname);
+  end loop;
+end
+$check_constraint_validation$;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
