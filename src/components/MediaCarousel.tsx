@@ -1,19 +1,25 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Pause, Play } from "lucide-react";
 
 export interface MediaCarouselProps {
   images: string[];
   alt: string;
   intervalMs?: number;
   onOpen?: (index: number) => void;
+  paused?: boolean;
 }
 
-export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen }: MediaCarouselProps) {
+export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen, paused = false }: MediaCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [manuallyPaused, setManuallyPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [navigationVersion, setNavigationVersion] = useState(0);
   const imageCount = images.length;
+  const autoplayPaused = reducedMotion || manuallyPaused || hovered || focused || paused;
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -28,17 +34,21 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen }: MediaC
   }, [imageCount]);
 
   useEffect(() => {
-    if (reducedMotion || imageCount < 2) return;
+    if (autoplayPaused || imageCount < 2) return;
     const timer = window.setInterval(() => {
       setActiveIndex((current) => (current + 1) % imageCount);
     }, intervalMs);
     return () => window.clearInterval(timer);
-  }, [imageCount, intervalMs, reducedMotion]);
+  }, [autoplayPaused, imageCount, intervalMs, navigationVersion]);
 
   if (imageCount === 0) return null;
 
-  const previous = () => setActiveIndex((current) => (current - 1 + imageCount) % imageCount);
-  const next = () => setActiveIndex((current) => (current + 1) % imageCount);
+  const navigate = (direction: -1 | 1) => {
+    setActiveIndex((current) => (current + direction + imageCount) % imageCount);
+    setNavigationVersion((current) => current + 1);
+  };
+  const previous = () => navigate(-1);
+  const next = () => navigate(1);
   const activeImage = (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -56,7 +66,18 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen }: MediaC
   );
 
   return (
-    <div className="relative isolate h-full min-h-40 overflow-hidden bg-black/25">
+    <div
+      className="relative isolate h-full min-h-40 overflow-hidden bg-black/25"
+      role="region"
+      aria-roledescription="carousel"
+      aria-label={`Carrusel de ${alt}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+      }}
+    >
       {onOpen ? (
         <button
           type="button"
@@ -72,6 +93,15 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen }: MediaC
 
       {imageCount > 1 ? (
         <>
+          <button
+            type="button"
+            onClick={() => setManuallyPaused((current) => !current)}
+            aria-label={manuallyPaused ? "Reanudar carrusel" : "Pausar carrusel"}
+            aria-pressed={manuallyPaused}
+            className="press absolute left-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur transition-colors hover:border-white/25 hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nude"
+          >
+            {manuallyPaused ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
+          </button>
           <button
             type="button"
             onClick={previous}
@@ -99,7 +129,7 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen }: MediaC
                 />
               ))}
             </div>
-            <span className="num text-[10px] font-medium tabular-nums text-white/75">
+            <span className="num text-[10px] font-medium tabular-nums text-white/75" aria-live="polite">
               {activeIndex + 1} / {imageCount}
             </span>
           </div>

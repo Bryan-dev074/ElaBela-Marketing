@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { containTabFocus } from "@/lib/focus-management";
 
 const EMPTY_IMAGES: string[] = [];
 
@@ -28,11 +29,24 @@ export function Lightbox({
 }) {
   const sources = images.length > 0 ? images : src ? [src] : EMPTY_IMAGES;
   const imageCount = sources.length;
+  const open = imageCount > 0;
   const [activeIndex, setActiveIndex] = useState(initialIndex);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const captionId = useId();
 
   useEffect(() => {
     setActiveIndex(imageCount > 0 ? ((initialIndex % imageCount) + imageCount) % imageCount : 0);
   }, [imageCount, initialIndex]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    return () => {
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (imageCount === 0) return;
@@ -58,10 +72,16 @@ export function Lightbox({
     <AnimatePresence>
       {activeSrc ? (
         <div
+          ref={dialogRef}
           className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-10"
           role="dialog"
           aria-modal="true"
-          aria-label={caption || alt || "Vista ampliada"}
+          aria-labelledby={caption ? captionId : undefined}
+          aria-label={caption ? undefined : alt || "Vista ampliada"}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (dialogRef.current) containTabFocus(event, dialogRef.current);
+          }}
         >
           <motion.div
             initial={{ opacity: 0 }}
@@ -69,6 +89,7 @@ export function Lightbox({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             onClick={onClose}
+            aria-hidden="true"
             className="absolute inset-0 bg-black/85 backdrop-blur-md"
           />
           <motion.figure
@@ -80,7 +101,7 @@ export function Lightbox({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={activeSrc} alt={imageAlt} className="max-h-[80vh] max-w-full rounded-2xl object-contain shadow-pop" />
-            {caption && <figcaption className="glow-text mt-3 text-center text-xs font-medium">{caption}</figcaption>}
+            {caption ? <figcaption id={captionId} className="glow-text mt-3 text-center text-xs font-medium">{caption}</figcaption> : null}
             {imageCount > 1 ? (
               <>
                 <button
@@ -105,11 +126,12 @@ export function Lightbox({
               </>
             ) : null}
             <button
+              ref={closeRef}
               type="button"
               onClick={onClose}
               aria-label="Cerrar"
               data-cursor-label="Cerrar"
-              className="press absolute -right-3 -top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/80 text-white backdrop-blur transition hover:border-nude/50"
+              className="press absolute -right-3 -top-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/80 text-white backdrop-blur transition-colors hover:border-nude/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nude"
             >
               <X className="h-4 w-4" />
             </button>

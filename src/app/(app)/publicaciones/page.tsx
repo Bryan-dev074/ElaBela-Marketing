@@ -105,12 +105,14 @@ function TypeCard({
   onDelete,
   onGuide,
   onOpenImage,
+  paused,
 }: {
   post: PostType;
   onEdit: () => void;
   onDelete: () => void;
   onGuide: () => void;
   onOpenImage: (index: number) => void;
+  paused: boolean;
 }) {
   const [armed, setArmed] = useState(false);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,7 +137,7 @@ function TypeCard({
     <Card className="card-sheen group flex h-full flex-col overflow-hidden p-0">
       <div className="h-52 border-b border-white/8">
         {images.length > 0 ? (
-          <MediaCarousel images={images} alt={`Ejemplo de ${post.name}`} onOpen={onOpenImage} />
+          <MediaCarousel images={images} alt={`Ejemplo de ${post.name}`} onOpen={onOpenImage} paused={paused} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 bg-black/25 text-[var(--faint)]">
             <ImagePlus className="h-6 w-6" aria-hidden="true" />
@@ -498,6 +500,7 @@ export default function PublicacionesPage() {
               onDelete={() => { void deletePublication(post); }}
               onGuide={() => setGuidePost(post)}
               onOpenImage={(imageIndex) => setLightbox({ post, index: imageIndex })}
+              paused={lightbox?.post.id === post.id}
             />
           </Reveal>
         ))}

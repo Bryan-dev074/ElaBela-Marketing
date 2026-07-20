@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import type { TaskState } from "@/lib/data";
+import { containTabFocus, focusableElements } from "@/lib/focus-management";
 
 /* ---------------- Layout ---------------- */
 
@@ -348,6 +349,8 @@ export function Modal({
   children,
   footer,
   wide,
+  initialFocusRef,
+  titleId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -356,7 +359,30 @@ export function Modal({
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
+  titleId?: string;
 }) {
+  const generatedTitleId = useId();
+  const generatedDescriptionId = useId();
+  const resolvedTitleId = titleId ?? generatedTitleId;
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    if (dialog) {
+      const preferredFocus = initialFocusRef?.current;
+      const target = preferredFocus && dialog.contains(preferredFocus)
+        ? preferredFocus
+        : focusableElements(dialog)[0] ?? dialog;
+      target.focus();
+    }
+    return () => {
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [initialFocusRef, open]);
+
   useEffect(() => {
     if (!open) return;
     // defaultPrevented: a popover inside the modal (IconPicker/TimePicker) already
@@ -368,7 +394,7 @@ export function Modal({
 
   return (
     <AnimatePresence>
-      {open && (
+      {open ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
@@ -376,9 +402,19 @@ export function Modal({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
+            aria-hidden="true"
             className="absolute inset-0 bg-black/70 backdrop-blur-md"
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={resolvedTitleId}
+            aria-describedby={description ? generatedDescriptionId : undefined}
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (dialogRef.current) containTabFocus(event, dialogRef.current);
+            }}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
@@ -387,18 +423,18 @@ export function Modal({
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] p-5">
               <div>
-                <h2 className="text-lg font-semibold text-white">{title}</h2>
-                {description && <p className="mt-0.5 text-xs text-[var(--muted)]">{description}</p>}
+                <h2 id={resolvedTitleId} className="text-lg font-semibold text-white">{title}</h2>
+                {description ? <p id={generatedDescriptionId} className="mt-0.5 text-xs text-[var(--muted)]">{description}</p> : null}
               </div>
-              <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] transition hover:text-white" aria-label="Cerrar">
+              <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] transition hover:text-white" aria-label="Cerrar">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
-            {footer && <div className="flex justify-end gap-2 border-t border-[var(--border)] p-4">{footer}</div>}
+            {footer ? <div className="flex justify-end gap-2 border-t border-[var(--border)] p-4">{footer}</div> : null}
           </motion.div>
         </div>
-      )}
+      ) : null}
     </AnimatePresence>
   );
 }
