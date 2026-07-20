@@ -24,7 +24,7 @@ Esta entrega no reintroduce proyectos semanales ni ninguna recurrencia semanal.
 - Flujo único de completar y reabrir proyectos.
 - Secciones Activos, Completados y Anteriores dentro de Proyectos.
 - Filtro de completados por perfil responsable.
-- Actualización del calendario para excluir proyectos terminados o archivados heredados.
+- Actualización del calendario con una bandeja compacta para agendar pendientes y una ocurrencia histórica en la fecha real de finalización.
 - Generación protegida de notas con Gemini para el modo `Solo nota`.
 - Editor Markdown existente después de generar la nota.
 - Recorte cuadrado, desplazamiento y zoom para la foto personal y para las fotos administradas desde la lista de perfiles.
@@ -161,7 +161,16 @@ La página conserva tarjetas, colores, tipografía, modales y densidad visual ac
 
 El formulario de alta y edición permite nombre, tipo, prioridad, objetivo, fecha de inicio, fecha de entrega, responsable principal, responsables adicionales y modo de contenido.
 
-El calendario solo incorpora proyectos activos. Quedan fuera los proyectos `done` y cualquier fila con `archived = true`.
+La bandeja lateral y el modal para agendar proyectos usan la misma colección: únicamente proyectos `todo` con `archived = false`. La bandeja comienza plegada, muestra el total pendiente y despliega una lista con altura limitada para no crecer sin control. Los proyectos `doing`, `done` y archivados no pueden arrastrarse ni agendarse desde allí.
+
+Cada proyecto produce como máximo una ocurrencia en el calendario:
+
+- un proyecto `todo` o `doing` con fecha de entrega aparece en `due` como entrega;
+- un proyecto `done` con `completedAt` válido aparece en la fecha de Paraguay correspondiente a ese instante como completado;
+- al completar, `completedAt` reemplaza a `due` como única ocurrencia, aunque las fechas sean distintas;
+- un proyecto terminado heredado sin `completedAt` o cualquier fila archivada no aparece en el calendario.
+
+Las ocurrencias completadas se identifican como `Completado` y no ofrecen Desagendar porque su fecha procede de la auditoría. Las entregas pendientes conservan la acción de desagendar.
 
 ## 7. Generación de nota con Gemini
 
@@ -210,7 +219,7 @@ La ruta:
 2. rechaza métodos distintos de `POST`;
 3. normaliza el nombre, exige contenido y limita su longitud a 160 caracteres;
 4. crea la instrucción cerrada para el formato anterior;
-5. llama desde el servidor a `POST https://generativelanguage.googleapis.com/v1beta/interactions`;
+5. llama desde el servidor a `POST https://generativelanguage.googleapis.com/v1/interactions`;
 6. usa `store: false` y el modelo configurado;
 7. aplica un tiempo máximo de 20 segundos;
 8. extrae solo texto final de `model_output` y rechaza como inválida una respuesta vacía o superior a 6.000 caracteres;
@@ -310,7 +319,8 @@ La implementación se hace con pruebas primero para cada comportamiento de domin
 - filas archivadas heredadas no se modifican ni aparecen como activas;
 - filtro por responsables al completar, incluidas múltiples responsables;
 - total general sin duplicar proyectos;
-- calendario excluye terminados y archivados;
+- bandeja y modal de calendario solo permiten agendar proyectos `todo` no archivados;
+- calendario muestra cada completado una sola vez en la fecha paraguaya de `completedAt` y no en `due`;
 - no existen controles de archivo/restauración ni referencias semanales en el flujo nuevo.
 
 ### Gemini
