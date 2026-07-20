@@ -468,6 +468,16 @@ describe("manual reconciliation safety and verification", () => {
     expect(leftGrouped).not.toBe(rightGrouped);
   });
 
+  it("casts catalog column names to text before comparing key-column arrays", () => {
+    const verification = manual.match(/-- VERIFICATION[\s\S]*$/i)?.[0] ?? "";
+    const keyConstraints = verification.match(/key_constraints_ok as \([\s\S]*?\n  \),/i)?.[0] ?? "";
+
+    expect(keyConstraints).toMatch(
+      /array_agg\(attribute\.attname::text order by key_column\.ordinality\)/i,
+    );
+    expect(keyConstraints).toMatch(/constraint_state\.conname = required\.constraint_name/i);
+  });
+
   it("audits RLS, exact FKs/checks/indexes/grants/RPC ACLs and the complete bucket", () => {
     const verification = manual.match(/-- VERIFICATION[\s\S]*$/i)?.[0] ?? "";
     const rlsRows = [...cteValuesBlock(verification, "required_rls_tables")
@@ -486,6 +496,7 @@ describe("manual reconciliation safety and verification", () => {
       ["projects_completed_by_fkey", "projects", "completed_by", "profiles", "id", "n"],
       ["credential_categories_owner_id_fkey", "credential_categories", "owner_id", "profiles", "id", "c"],
     ]);
+    expect(verification).toMatch(/foreign_key\.conname = required\.constraint_name/i);
     const checkRows = [...cteValuesBlock(verification, "required_checks")
       .matchAll(/^\s*\('([^']+)', '([^']+)',/gm)].map((match) => match.slice(1, 3));
     expect(checkRows).toEqual([

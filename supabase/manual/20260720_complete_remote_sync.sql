@@ -1726,6 +1726,7 @@ with
         on target_attribute.attrelid = foreign_key.confrelid
        and target_attribute.attnum = foreign_key.confkey[1]
       where foreign_key.conrelid = ('public.' || required.source_table)::regclass
+        and foreign_key.conname = required.constraint_name
         and foreign_key.contype = 'f' and cardinality(foreign_key.conkey) = 1
         and source_attribute.attname = required.source_column
         and foreign_key.confrelid = ('public.' || required.target_table)::regclass
@@ -1775,9 +1776,10 @@ with
       select 1
       from pg_constraint constraint_state
       where constraint_state.conrelid = ('public.' || required.table_name)::regclass
+        and constraint_state.conname = required.constraint_name
         and constraint_state.contype = required.constraint_type::"char"
         and (
-          select array_agg(attribute.attname order by key_column.ordinality)
+          select array_agg(attribute.attname::text order by key_column.ordinality)
           from unnest(constraint_state.conkey) with ordinality as key_column(attnum, ordinality)
           join pg_attribute attribute
             on attribute.attrelid = constraint_state.conrelid and attribute.attnum = key_column.attnum

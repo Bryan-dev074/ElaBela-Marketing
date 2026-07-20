@@ -40,7 +40,7 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - Atomicidad: el manual envuelve mutaciones en `BEGIN/COMMIT`; la recarga de PostgREST ocurre después del commit.
 - Datos heredados: blancos, duplicados u otras incompatibilidades abortan la transacción con un error español explícito; no se omiten restricciones o índices y no se renombran, fusionan ni borran filas.
 - Normalización autorizada: valores inválidos/nulos de tipo o prioridad de proyecto se convierten a `other`/`normal` antes de los checks exactos.
-- Verificación pendiente del usuario: por prohibición expresa no se levantó una base ni se ejecutó el SQL; la última consulta del script manual valida columnas/tablas críticas, RLS, policies, bucket y privilegios sin leer secretos ni filas de usuario.
+- Verificación originalmente pendiente: durante esta etapa no se levantó una base ni se ejecutó el SQL; la última consulta del script manual valida columnas/tablas críticas, RLS, policies, bucket y privilegios sin leer secretos ni filas de usuario. La ejecución posterior se documenta al final.
 
 ## Correcciones posteriores al review crítico
 
@@ -68,3 +68,12 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - Los tres índices únicos de categorías y `projects_completed_at_idx` comprueban además `pg_index.indrelid` contra la tabla exacta. Esos cuatro índices, los seis índices simples y la verificación final exigen método `btree` mediante `pg_class.relam` y `pg_am`.
 - Se corrigieron el comentario del script manual y las secciones históricas del informe: las incompatibilidades abortan la transacción y la reconciliación contiene cinco FKs declaradas inicialmente como `NOT VALID` antes de validarlas.
 - Validación fresca: 4 archivos focales, 59/59 pruebas aprobadas; suite completa, 27 archivos y 247/247 pruebas aprobadas; `npx tsc --noEmit` aprobado.
+
+## Corrección tras la primera ejecución real en SQL Editor
+
+- El cuerpo de reconciliación llegó al `COMMIT` en Supabase; después falló únicamente la consulta final de verificación con `42883: operator does not exist: name[] = text[]`.
+- Causa raíz: `pg_attribute.attname` es de tipo `name`, por lo que `array_agg(attname)` produce `name[]`, mientras que el contrato esperado usa `text[]`.
+- Se añadió primero una prueba de regresión en rojo y luego el cast mínimo `attribute.attname::text` antes de agregar el arreglo.
+- El error original se reprodujo en un PostgreSQL embebido temporal; el cast lo corrigió. La consulta completa de verificación también se parseó y ejecutó allí sin errores de sintaxis o resolución de tipos. El runtime temporal se eliminó después de la comprobación.
+- La auditoría posterior también cerró dos falsos positivos: las FKs y las PK/unique requeridas ahora verifican tanto su estructura como el nombre contractual exacto.
+- Validación final: 27 archivos y 248/248 pruebas aprobadas, `npx tsc --noEmit` sin errores, build de producción aprobado y dos revisiones independientes con veredicto `APPROVED`.
