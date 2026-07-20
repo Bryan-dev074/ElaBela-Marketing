@@ -18,6 +18,7 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen, paused =
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [navigationVersion, setNavigationVersion] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
   const imageCount = images.length;
   const autoplayPaused = reducedMotion || manuallyPaused || hovered || focused || paused;
 
@@ -44,8 +45,15 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen, paused =
   if (imageCount === 0) return null;
 
   const navigate = (direction: -1 | 1) => {
-    setActiveIndex((current) => (current + direction + imageCount) % imageCount);
+    const nextIndex = (activeIndex + direction + imageCount) % imageCount;
+    setActiveIndex(nextIndex);
+    setAnnouncement(`Imagen ${nextIndex + 1} de ${imageCount}`);
     setNavigationVersion((current) => current + 1);
+  };
+  const togglePause = () => {
+    const nextPaused = !manuallyPaused;
+    setManuallyPaused(nextPaused);
+    setAnnouncement(nextPaused ? `Carrusel pausado en imagen ${activeIndex + 1} de ${imageCount}` : "Carrusel reanudado");
   };
   const previous = () => navigate(-1);
   const next = () => navigate(1);
@@ -95,7 +103,7 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen, paused =
         <>
           <button
             type="button"
-            onClick={() => setManuallyPaused((current) => !current)}
+            onClick={togglePause}
             aria-label={manuallyPaused ? "Reanudar carrusel" : "Pausar carrusel"}
             aria-pressed={manuallyPaused}
             className="press absolute left-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/70 text-white backdrop-blur transition-colors hover:border-white/25 hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nude"
@@ -129,10 +137,11 @@ export function MediaCarousel({ images, alt, intervalMs = 1500, onOpen, paused =
                 />
               ))}
             </div>
-            <span className="num text-[10px] font-medium tabular-nums text-white/75" aria-live="polite">
+            <span className="num text-[10px] font-medium tabular-nums text-white/75">
               {activeIndex + 1} / {imageCount}
             </span>
           </div>
+          <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
         </>
       ) : null}
     </div>

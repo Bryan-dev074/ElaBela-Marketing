@@ -4,6 +4,7 @@ import React, { useEffect, useId, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import type { TaskState } from "@/lib/data";
+import { DialogPortalHostContext } from "@/components/dialog-portal";
 import { containTabFocus, focusableElements } from "@/lib/focus-management";
 
 /* ---------------- Layout ---------------- */
@@ -366,6 +367,7 @@ export function Modal({
   const generatedDescriptionId = useId();
   const resolvedTitleId = titleId ?? generatedTitleId;
   const dialogRef = useRef<HTMLDivElement>(null);
+  const portalHostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -405,7 +407,7 @@ export function Modal({
             aria-hidden="true"
             className="absolute inset-0 bg-black/70 backdrop-blur-md"
           />
-          <motion.div
+          <div
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
@@ -415,24 +417,31 @@ export function Modal({
             onKeyDown={(event) => {
               if (dialogRef.current) containTabFocus(event, dialogRef.current);
             }}
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className={`glass relative z-10 w-full ${wide ? "max-w-2xl" : "max-w-md"} rounded-2xl shadow-pop`}
+            className={`relative z-10 w-full ${wide ? "max-w-2xl" : "max-w-md"}`}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] p-5">
-              <div>
-                <h2 id={resolvedTitleId} className="text-lg font-semibold text-white">{title}</h2>
-                {description ? <p id={generatedDescriptionId} className="mt-0.5 text-xs text-[var(--muted)]">{description}</p> : null}
-              </div>
-              <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] transition hover:text-white" aria-label="Cerrar">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
-            {footer ? <div className="flex justify-end gap-2 border-t border-[var(--border)] p-4">{footer}</div> : null}
-          </motion.div>
+            <DialogPortalHostContext.Provider value={portalHostRef}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97, y: 8 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                className="glass w-full rounded-2xl shadow-pop"
+              >
+                <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] p-5">
+                  <div>
+                    <h2 id={resolvedTitleId} className="text-lg font-semibold text-white">{title}</h2>
+                    {description ? <p id={generatedDescriptionId} className="mt-0.5 text-xs text-[var(--muted)]">{description}</p> : null}
+                  </div>
+                  <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] transition hover:text-white" aria-label="Cerrar">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
+                {footer ? <div className="flex justify-end gap-2 border-t border-[var(--border)] p-4">{footer}</div> : null}
+              </motion.div>
+              <div ref={portalHostRef} data-dialog-portal-host="true" />
+            </DialogPortalHostContext.Provider>
+          </div>
         </div>
       ) : null}
     </AnimatePresence>

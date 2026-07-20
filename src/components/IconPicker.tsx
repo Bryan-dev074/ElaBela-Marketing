@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ImagePlus, Trash2 } from "lucide-react";
 import { IconGlyph } from "@/components/ui";
+import { useDialogPortalTarget } from "@/components/dialog-portal";
 import { fileToImage } from "@/lib/profiles";
 
 /**
@@ -94,6 +95,7 @@ export function IconPicker({
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const portalTarget = useDialogPortalTarget();
   const [pos, setPos] = useState<{ top: number; left: number; up: boolean }>({ top: 0, left: 0, up: false });
 
   const isImage = value?.startsWith("data:") || value?.startsWith("http");
@@ -120,7 +122,7 @@ export function IconPicker({
       } else {
         onChange(await fileToImage(f, 256));
       }
-      setOpen(false);
+      closePanel();
     } catch {
       setUploadErr("No se pudo procesar la imagen.");
     }
@@ -142,6 +144,11 @@ export function IconPicker({
     setOpen(true);
   };
 
+  const closePanel = useCallback(() => {
+    setOpen(false);
+    btnRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     // Capture + preventDefault so Escape closes ONLY the popover, not a parent Modal.
@@ -149,11 +156,11 @@ export function IconPicker({
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
-      setOpen(false);
+      closePanel();
     };
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
-  }, [open]);
+  }, [closePanel, open]);
 
   const results = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -175,12 +182,12 @@ export function IconPicker({
         <IconGlyph icon={value} size={Math.round(size * 0.62)} rounded="rounded-md" />
       </button>
 
-      {typeof document !== "undefined" &&
+      {portalTarget &&
         createPortal(
           <AnimatePresence>
             {open && (
               <>
-                <div className="fixed inset-0 z-[140]" onClick={() => setOpen(false)} />
+                <div className="fixed inset-0 z-[140]" onClick={closePanel} />
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: pos.up ? 6 : -6 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -214,7 +221,7 @@ export function IconPicker({
                     {isImage && (
                       <button
                         type="button"
-                        onClick={() => { onChange("✨"); setOpen(false); }}
+                        onClick={() => { onChange("✨"); closePanel(); }}
                         aria-label="Quitar imagen"
                         data-cursor-color="#f87171"
                         data-cursor-label="Quitar imagen"
@@ -229,7 +236,7 @@ export function IconPicker({
                     {results ? (
                       <div className="grid grid-cols-8 gap-0.5">
                         {results.map((i) => (
-                          <EmojiBtn key={i.e + i.cat} e={i.e} active={i.e === value} onPick={() => { onChange(i.e); setOpen(false); }} />
+                          <EmojiBtn key={i.e + i.cat} e={i.e} active={i.e === value} onPick={() => { onChange(i.e); closePanel(); }} />
                         ))}
                         {results.length === 0 && <p className="col-span-8 py-6 text-center text-xs text-[var(--faint)]">Sin resultados</p>}
                       </div>
@@ -239,7 +246,7 @@ export function IconPicker({
                           <p className="eyebrow mb-1 !text-[9px]">{c.label}</p>
                           <div className="grid grid-cols-8 gap-0.5">
                             {c.items.map((i) => (
-                              <EmojiBtn key={i.e} e={i.e} active={i.e === value} onPick={() => { onChange(i.e); setOpen(false); }} />
+                              <EmojiBtn key={i.e} e={i.e} active={i.e === value} onPick={() => { onChange(i.e); closePanel(); }} />
                             ))}
                           </div>
                         </div>
@@ -250,7 +257,7 @@ export function IconPicker({
               </>
             )}
           </AnimatePresence>,
-          document.body,
+          portalTarget,
         )}
     </>
   );

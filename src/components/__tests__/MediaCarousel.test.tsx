@@ -40,6 +40,28 @@ describe("MediaCarousel", () => {
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
   });
 
+  it("keeps automatic rotations silent for assistive technology", async () => {
+    render(<MediaCarousel images={images} alt="Ejemplo" />);
+    const status = screen.getByRole("status");
+
+    expect(status).toBeEmptyDOMElement();
+    await act(async () => vi.advanceTimersByTimeAsync(1500));
+
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+    expect(status).toBeEmptyDOMElement();
+  });
+
+  it("announces pause changes and user-initiated navigation", () => {
+    render(<MediaCarousel images={images} alt="Ejemplo" />);
+    const status = screen.getByRole("status");
+
+    fireEvent.click(screen.getByRole("button", { name: "Imagen siguiente" }));
+    expect(status).toHaveTextContent("Imagen 2 de 3");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pausar carrusel" }));
+    expect(status).toHaveTextContent("Carrusel pausado en imagen 2 de 3");
+  });
+
   it("offers an accessible pause and resume control", async () => {
     render(<MediaCarousel images={images} alt="Ejemplo" />);
 

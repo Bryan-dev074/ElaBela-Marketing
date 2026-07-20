@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Plus, X, Check } from "lucide-react";
+import { useDialogPortalTarget } from "@/components/dialog-portal";
 
 /**
  * Interactive time picker: a floating "clock" panel with hour/minute wheels
@@ -59,6 +60,7 @@ export function TimePickerPanel({
   anchor: DOMRect | null;
 }) {
   const [{ h, m }, set] = useState(parse(value));
+  const portalTarget = useDialogPortalTarget();
 
   useEffect(() => {
     // Capture + preventDefault so Escape closes ONLY the popover, not a parent Modal.
@@ -80,10 +82,13 @@ export function TimePickerPanel({
     : window.innerHeight / 2 - panelH / 2;
   const left = anchor ? Math.min(Math.max(8, anchor.left), window.innerWidth - panelW - 8) : window.innerWidth / 2 - panelW / 2;
 
+  if (!portalTarget) return null;
+
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[140]" onClick={onClose} />
+      <div key="time-picker-backdrop" className="fixed inset-0 z-[140]" onClick={onClose} />
       <motion.div
+        key="time-picker-panel"
         initial={{ opacity: 0, scale: 0.95, y: -6 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97 }}
@@ -123,7 +128,7 @@ export function TimePickerPanel({
         </button>
       </motion.div>
     </AnimatePresence>,
-    document.body,
+    portalTarget,
   );
 }
 
@@ -132,6 +137,10 @@ export function TimePicker({ value, onChange, className = "" }: { value: string;
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const closePanel = useCallback(() => {
+    setOpen(false);
+    btnRef.current?.focus();
+  }, []);
   return (
     <>
       <button
@@ -144,7 +153,7 @@ export function TimePicker({ value, onChange, className = "" }: { value: string;
         <span>{value || "— : —"}</span>
         <Clock className="h-3.5 w-3.5 text-nude" />
       </button>
-      {open && <TimePickerPanel value={value} onConfirm={onChange} onClose={() => setOpen(false)} anchor={anchor} />}
+      {open && <TimePickerPanel value={value} onConfirm={onChange} onClose={closePanel} anchor={anchor} />}
     </>
   );
 }
@@ -154,6 +163,10 @@ export function TimeListEditor({ times, onChange }: { times: string[]; onChange:
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const addRef = useRef<HTMLButtonElement>(null);
+  const closePanel = useCallback(() => {
+    setOpen(false);
+    addRef.current?.focus();
+  }, []);
 
   const add = (v: string) => {
     if (!times.includes(v)) onChange([...times, v].sort());
@@ -188,7 +201,7 @@ export function TimeListEditor({ times, onChange }: { times: string[]; onChange:
       >
         <Plus className="h-3 w-3" /> Horario
       </button>
-      {open && <TimePickerPanel onConfirm={add} onClose={() => setOpen(false)} anchor={anchor} />}
+      {open && <TimePickerPanel onConfirm={add} onClose={closePanel} anchor={anchor} />}
     </div>
   );
 }
