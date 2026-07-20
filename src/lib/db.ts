@@ -4,8 +4,9 @@ import { type SetStateAction, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DAILY_TASKS, PROJECTS, GUIONES, CLIENTS, PRODUCTS, POST_TYPES, STORY_CONFIG, TOOL_CATEGORIES,
-  type DailyTask, type Project, type Guion, type Client, type Product, type PostType, type StoryPlatform, type WeeklyTask,
+  type DailyTask, type DailyTaskLog, type Project, type Guion, type Client, type Product, type PostType, type StoryPlatform, type TaskState,
 } from "@/lib/data";
+import { buildDailyTaskTransition, dailyTaskFromRow, dailyTaskLogFromRow, dailyTaskToRow, stateForTask } from "@/lib/daily-tasks";
 import { normalizePublicationImages } from "@/lib/publications";
 import {
   DEFAULT_TOOL_CATEGORIES,
@@ -220,19 +221,138 @@ export const useDailyTasks = () =>
     table: "daily_tasks",
     seed: DAILY_TASKS,
     order: { col: "sort" },
-    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: r.assignee as string, state: r.state as DailyTask["state"], note: (r.note as string) || undefined, rotation: (r.rotation as string[]) || undefined, days: (r.days as number[]) || undefined, dayAssignees: (r.day_assignees as string[]) || undefined, postType: (r.post_type as string) || undefined }),
-    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, state: t.state, note: t.note ?? null, rotation: t.rotation ?? null, days: t.days ?? null, day_assignees: t.dayAssignees ?? null, post_type: t.postType ?? null }),
+    fromRow: dailyTaskFromRow,
+    toRow: dailyTaskToRow,
   });
 
-/** Tareas semanales: bolsa sin fecha que se arrastra al calendario (como proyectos chicos). */
-export const useWeeklyTasks = () =>
-  useCollection<WeeklyTask>({
-    table: "weekly_tasks",
-    seed: [],
-    order: { col: "created_at", asc: false },
-    fromRow: (r) => ({ id: r.id as string, name: r.name as string, icon: (r.icon as string) || "✨", assignee: (r.assignee as string) || "", date: (r.task_date as string) || undefined, state: (r.state as WeeklyTask["state"]) || "todo", postType: (r.post_type as string) || undefined, createdAt: ((r.created_at as string) || "").slice(0, 10) }),
-    toRow: (t) => ({ id: t.id, name: t.name, icon: t.icon, assignee: t.assignee, task_date: nn(t.date), state: t.state, post_type: t.postType ?? null }),
-  });
+export function useDailyTaskLogs(activityDate: string) {
+  const [logs, setLogs] = useState<DailyTaskLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
+  const logsRef = useRef<DailyTaskLog[]>([]);
+  const confirmedLogsRef = useRef<DailyTaskLog[]>([]);
+  const dateRef = useRef(activityDate);
+  const requestVersion = useRef(0);
+  const mutationVersions = useRef(new Map<string, number>());
+  const mutationQueues = useRef(new Map<string, Promise<{ data: unknown; error: { message: string } | null }>>());
+  const pendingCounts = useRef(new Map<string, number>());
+
+  const setCurrentLogs = (next: DailyTaskLog[] | ((current: DailyTaskLog[]) => DailyTaskLog[])) => {
+    const resolved = typeof next === "function" ? next(logsRef.current) : next;
+    logsRef.current = resolved;
+    setLogs(resolved);
+  };
+
+  useEffect(() => {
+    dateRef.current = activityDate;
+    const version = ++requestVersion.current;
+    const versionsAtStart = new Map(mutationVersions.current);
+    setCurrentLogs([]);
+    confirmedLogsRef.current = [];
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      const { data, error: queryError } = await supabase.from("daily_task_logs").select("*").eq("activity_date", activityDate);
+      if (requestVersion.current !== version || dateRef.current !== activityDate) return;
+      if (queryError) {
+        setError(queryError.message);
+      } else {
+        const loaded = (data ?? []).map((row) => dailyTaskLogFromRow(row as Record<string, unknown>));
+        const wasMutatedDuringRead = (taskId: string) => {
+          const key = `${activityDate}:${taskId}`;
+          return (mutationVersions.current.get(key) ?? 0) > (versionsAtStart.get(key) ?? 0);
+        };
+        const optimisticByTask = new Map(logsRef.current.map((log) => [log.taskId, log]));
+        const confirmedByTask = new Map(confirmedLogsRef.current.map((log) => [log.taskId, log]));
+        const loadedTaskIds = new Set(loaded.map((log) => log.taskId));
+        const merged = loaded.map((log) => wasMutatedDuringRead(log.taskId) ? optimisticByTask.get(log.taskId) ?? log : log);
+        const mergedConfirmed = loaded.map((log) => wasMutatedDuringRead(log.taskId) ? confirmedByTask.get(log.taskId) ?? log : log);
+        for (const log of logsRef.current) {
+          if (wasMutatedDuringRead(log.taskId) && !loadedTaskIds.has(log.taskId)) merged.push(log);
+        }
+        for (const log of confirmedLogsRef.current) {
+          if (wasMutatedDuringRead(log.taskId) && !loadedTaskIds.has(log.taskId)) mergedConfirmed.push(log);
+        }
+        confirmedLogsRef.current = mergedConfirmed;
+        setCurrentLogs(merged);
+      }
+      setLoading(false);
+    })();
+  }, [activityDate]);
+
+  const transition = async (task: DailyTask, state: TaskState, actorId: string): Promise<CollectionMutationResult> => {
+    setError(null);
+    let row;
+    try {
+      row = buildDailyTaskTransition({ task, activityDate, state, actorId });
+    } catch (transitionError) {
+      const message = transitionError instanceof Error ? transitionError.message : "No se pudo cambiar el estado.";
+      setError(message);
+      return { ok: false, error: message };
+    }
+
+    const mutationKey = `${activityDate}:${task.id}`;
+    const version = (mutationVersions.current.get(mutationKey) ?? 0) + 1;
+    mutationVersions.current.set(mutationKey, version);
+    const existing = logsRef.current.find((log) => log.taskId === task.id);
+    const optimistic = dailyTaskLogFromRow({ ...row, id: existing?.id ?? `optimistic-${task.id}-${activityDate}` });
+    setCurrentLogs(existing
+      ? logsRef.current.map((log) => (log.taskId === task.id ? optimistic : log))
+      : [...logsRef.current, optimistic]);
+
+    pendingCounts.current.set(mutationKey, (pendingCounts.current.get(mutationKey) ?? 0) + 1);
+    setPendingKeys(new Set(pendingCounts.current.keys()));
+    const write = async () => {
+      const result = await supabase.from("daily_task_logs").upsert(row, { onConflict: "task_id,activity_date" });
+      return { data: result.data, error: result.error ? { message: result.error.message } : null };
+    };
+    const previousWrite = mutationQueues.current.get(mutationKey);
+    const writePromise = previousWrite ? previousWrite.then(write, write) : write();
+    mutationQueues.current.set(mutationKey, writePromise);
+
+    const { error: writeError } = await writePromise;
+    if (writeError) {
+      if (dateRef.current === activityDate && mutationVersions.current.get(mutationKey) === version) {
+        const confirmed = confirmedLogsRef.current.find((log) => log.taskId === task.id);
+        setCurrentLogs((current) => confirmed
+          ? current.some((log) => log.taskId === task.id)
+            ? current.map((log) => (log.taskId === task.id ? confirmed : log))
+            : [...current, confirmed]
+          : current.filter((log) => log.taskId !== task.id));
+        setError(writeError.message);
+      }
+      const count = (pendingCounts.current.get(mutationKey) ?? 1) - 1;
+      if (count > 0) pendingCounts.current.set(mutationKey, count);
+      else pendingCounts.current.delete(mutationKey);
+      setPendingKeys(new Set(pendingCounts.current.keys()));
+      if (mutationQueues.current.get(mutationKey) === writePromise) mutationQueues.current.delete(mutationKey);
+      return { ok: false, error: writeError.message };
+    }
+    if (dateRef.current === activityDate) {
+      const confirmed = dailyTaskLogFromRow({ ...row, id: existing?.id ?? optimistic.id });
+      confirmedLogsRef.current = confirmedLogsRef.current.some((log) => log.taskId === task.id)
+        ? confirmedLogsRef.current.map((log) => (log.taskId === task.id ? confirmed : log))
+        : [...confirmedLogsRef.current, confirmed];
+    }
+    const count = (pendingCounts.current.get(mutationKey) ?? 1) - 1;
+    if (count > 0) pendingCounts.current.set(mutationKey, count);
+    else pendingCounts.current.delete(mutationKey);
+    setPendingKeys(new Set(pendingCounts.current.keys()));
+    if (mutationQueues.current.get(mutationKey) === writePromise) mutationQueues.current.delete(mutationKey);
+    return { ok: true };
+  };
+
+  return {
+    logs,
+    loading,
+    error,
+    clearError: () => setError(null),
+    stateFor: (taskId: string) => stateForTask(logs, taskId),
+    isPending: (taskId: string) => pendingKeys.has(`${activityDate}:${taskId}`),
+    transition,
+  };
+}
 
 export const useProjects = () =>
   useCollection<Project>({

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { todayIso } from "@/lib/data";
+import { paraguayDateKey } from "@/lib/paraguay-time";
 
 /**
  * Devuelve la fecha ISO de HOY y re-renderiza cuando cambia el día — aunque la
@@ -10,12 +10,12 @@ import { todayIso } from "@/lib/data";
  * los contadores diarios (historias, tareas, rotaciones) vuelven a 0 solos.
  */
 export function useToday(): string {
-  const [today, setToday] = useState(todayIso);
+  const [today, setToday] = useState(paraguayDateKey);
 
   useEffect(() => {
     const check = () =>
       setToday((prev) => {
-        const now = todayIso();
+        const now = paraguayDateKey();
         return now === prev ? prev : now;
       });
     const id = setInterval(check, 30_000);

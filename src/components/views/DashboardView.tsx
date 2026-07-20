@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, animate, useMotionValue } from "framer-motion";
 import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Check } from "lucide-react";
@@ -8,8 +8,9 @@ import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, 
 import { Avatar, AvatarStack, OwnerPicker } from "@/components/Avatar";
 import { StoryCard } from "@/components/StoryCard";
 import { TimeListEditor } from "@/components/TimePicker";
-import { SPECIAL_DATES, storyDoneToday, taskAppliesToday, taskAssigneeToday, taskMineToday, todayIso, todayWeekday, type StoryPlatform, type TaskState } from "@/lib/data";
-import { useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
+import { SPECIAL_DATES, storyDoneToday, todayIso, type StoryPlatform, type TaskState } from "@/lib/data";
+import { assignedUserForDate, paraguayWeekday, taskMineForDate, tasksVisibleToTeam } from "@/lib/daily-tasks";
+import { useDailyTaskLogs, useDailyTasks, useProjects, useStoryConfig } from "@/lib/db";
 import { useProfiles } from "@/lib/profiles";
 import { useToday } from "@/lib/useToday";
 import type { Role } from "@/lib/brand";
@@ -71,16 +72,21 @@ function Stat({
 
 const countdownLabel = (days: number) => (days === 0 ? "hoy" : days === 1 ? "mañana" : `en ${days} días`);
 
-export default function DashboardView({ name, username, role }: { name: string; username: string; role: Role }) {
+export default function DashboardView({ name, username, userId, role }: { name: string; username: string; userId: string; role: Role }) {
   // Cambia cuando arranca un nuevo día (aunque la pestaña quede abierta):
   // re-renderiza y los filtros/turnos diarios se recalculan solos.
   const hoy = useToday();
-  const { items: tasks, update: updateTask } = useDailyTasks();
+  const { items: tasks } = useDailyTasks();
+  const dailyLogs = useDailyTaskLogs(hoy);
   const { items: projects } = useProjects();
   const { items: stories, update: updateStory } = useStoryConfig();
   const { profiles } = useProfiles();
   const [cfg, setCfg] = useState<StoryPlatform | null>(null);
-  const cycle = (id: string) => { const t = tasks.find((x) => x.id === id); if (t) updateTask(id, { state: NEXT[t.state] }); };
+  const taskDate = useMemo(() => new Date(`${hoy}T12:00:00.000Z`), [hoy]);
+  const cycle = (id: string) => {
+    const task = tasks.find((item) => item.id === id);
+    if (task) void dailyLogs.transition(task, NEXT[dailyLogs.stateFor(id)], userId);
+  };
 
   // El contador de historias es DIARIO: si `doneDate` no es hoy, arranca de 0.
   const bumpStory = (platform: string, d: number) => {
@@ -101,24 +107,23 @@ export default function DashboardView({ name, username, role }: { name: string; 
   // Solo las tareas diarias que tocan hoy (según sus días configurados).
   // Las rotativas pertenecen a TODOS los del grupo (cualquiera puede cubrirlas);
   // el chip de turno marca a quién le toca hoy.
-  const todays = tasks.filter(taskAppliesToday);
-  const mine = todays.filter((t) => taskMineToday(t, username));
-  const team = todays.filter((t) => !taskMineToday(t, username));
+  const todays = tasksVisibleToTeam(tasks, taskDate).map((task) => ({ ...task, state: dailyLogs.stateFor(task.id) }));
+  const mine = todays.filter((task) => taskMineForDate(task, username, taskDate));
+  const team = todays.filter((task) => !taskMineForDate(task, username, taskDate));
   const myDone = mine.filter((t) => t.state === "done").length;
   const teamDone = team.filter((t) => t.state === "done").length;
-  const teamMembers = Array.from(new Set(team.map((t) => taskAssigneeToday(t))));
+  const teamMembers = Array.from(new Set(team.map((task) => assignedUserForDate(task, taskDate)).filter((owner): owner is string => !!owner)));
   const activeProjects = projects.filter((p) => p.status === "doing" && !p.archived).length;
   // Cumplimiento del DÍA: tareas listas hoy sobre el total que aplica hoy.
   const todaysDone = myDone + teamDone;
   const dayPct = todays.length ? Math.round((todaysDone / todays.length) * 100) : 0;
   const today = new Date(hoy + "T00:00:00").toLocaleDateString("es-PY", { weekday: "long", day: "numeric", month: "long" });
-  const todayIdx = todayWeekday();
+  const todayIdx = paraguayWeekday(taskDate);
 
   // Próximas fechas: solo desde hoy, ordenadas, con cuenta regresiva
-  const startToday = new Date();
-  startToday.setHours(0, 0, 0, 0);
+  const startToday = new Date(`${hoy}T12:00:00.000Z`);
   const upcoming = SPECIAL_DATES
-    .map((s) => ({ ...s, when: new Date(s.date + "T00:00:00") }))
+    .map((s) => ({ ...s, when: new Date(s.date + "T12:00:00.000Z") }))
     .filter((s) => s.when.getTime() >= startToday.getTime())
     .sort((a, b) => a.when.getTime() - b.when.getTime())
     .slice(0, 4);
@@ -133,6 +138,13 @@ export default function DashboardView({ name, username, role }: { name: string; 
         </h1>
         <p className="mt-3 text-sm text-[var(--muted)]">Tocá una tarea para pasarla de estado. Hoy solo aparecen las que tocan hoy.</p>
       </motion.header>
+
+      {dailyLogs.error && (
+        <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <span>{dailyLogs.error}</span>
+          <button type="button" onClick={dailyLogs.clearError} className="min-h-10 rounded-lg px-3 text-xs font-semibold hover:bg-white/10">Cerrar</button>
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat
@@ -194,9 +206,10 @@ export default function DashboardView({ name, username, role }: { name: string; 
                   <button
                     key={t.id}
                     onClick={() => cycle(t.id)}
+                    disabled={dailyLogs.isPending?.(t.id) ?? false}
                     {...stateCursorProps(t.state)}
                     style={{ animationDelay: `${i * 40}ms` }}
-                    className={`press animate-fade-up flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150 hover:brightness-125 ${taskStateClass(t.state)}`}
+                    className={`press animate-fade-up flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150 hover:brightness-125 disabled:cursor-wait disabled:opacity-70 ${taskStateClass(t.state)}`}
                   >
                     <span className="flex min-w-0 items-center gap-2.5">
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/25 text-sm">
@@ -207,13 +220,13 @@ export default function DashboardView({ name, username, role }: { name: string; 
                         {t.rotation && t.rotation.length > 1 && (
                           <span
                             className={`mt-0.5 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                              taskAssigneeToday(t) === username
+                              assignedUserForDate(t, taskDate) === username
                                 ? "border-nude/50 bg-nude/15 text-nude"
                                 : "border-white/10 bg-white/5 text-[var(--muted)]"
                             }`}
                           >
-                            <Avatar username={taskAssigneeToday(t)} size={12} />
-                            {taskAssigneeToday(t) === username ? "te toca hoy" : <>hoy: <span className="capitalize">{taskAssigneeToday(t)}</span></>}
+                            <Avatar username={assignedUserForDate(t, taskDate)!} size={12} />
+                            {assignedUserForDate(t, taskDate) === username ? "te toca hoy" : <>hoy: <span className="capitalize">{assignedUserForDate(t, taskDate)}</span></>}
                           </span>
                         )}
                       </span>
@@ -251,7 +264,7 @@ export default function DashboardView({ name, username, role }: { name: string; 
                       <span className="min-w-0">
                         <span className={`block truncate text-sm ${t.state === "done" ? "text-[var(--muted)] line-through" : "text-white"}`}>{t.name}</span>
                         <span className="mt-0.5 flex items-center gap-1.5 text-[11px] capitalize text-[var(--faint)]">
-                          <Avatar username={taskAssigneeToday(t)} size={14} /> {taskAssigneeToday(t)}
+                          <Avatar username={assignedUserForDate(t, taskDate)!} size={14} /> {assignedUserForDate(t, taskDate)}
                         </span>
                       </span>
                     </span>
@@ -316,7 +329,7 @@ export default function DashboardView({ name, username, role }: { name: string; 
             {/* Una fila por perfil */}
             <div className="mt-6 space-y-3.5">
               {profiles.map((p, i) => {
-                const pTasks = todays.filter((t) => taskMineToday(t, p.username));
+                const pTasks = todays.filter((t) => taskMineForDate(t, p.username, taskDate));
                 const pDone = pTasks.filter((t) => t.state === "done").length;
                 const pPct = pTasks.length ? Math.round((pDone / pTasks.length) * 100) : 0;
                 const none = pTasks.length === 0;

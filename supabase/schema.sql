@@ -77,6 +77,7 @@ alter table public.daily_tasks add column if not exists sort int default 0;
 alter table public.daily_tasks add column if not exists days int[]; -- días de la semana (0=Lun … 6=Dom); null = todos
 alter table public.daily_tasks add column if not exists day_assignees text[]; -- modo «fija por día»: dueño por día (7 posiciones, '' = no se hace)
 alter table public.daily_tasks add column if not exists post_type text; -- id del tipo de post relacionado (opcional)
+alter table public.daily_tasks alter column assignee drop not null;
 
 alter table public.daily_tasks enable row level security;
 drop policy if exists daily_tasks_all on public.daily_tasks;
@@ -678,6 +679,25 @@ create table if not exists public.daily_task_logs (
   updated_at timestamptz not null default now(),
   unique (task_id, activity_date)
 );
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.daily_task_logs'::regclass
+      and conname = 'daily_task_logs_completion_consistency'
+  ) then
+    alter table public.daily_task_logs
+      add constraint daily_task_logs_completion_consistency check (
+        (state = 'done' and completed_at is not null)
+        or (state <> 'done' and completed_by is null and completed_at is null)
+      );
+  end if;
+end
+$$;
+create index if not exists daily_task_logs_activity_date_idx
+  on public.daily_task_logs (activity_date);
+create index if not exists daily_task_logs_completed_at_idx
+  on public.daily_task_logs (completed_at) where state = 'done';
 alter table public.daily_task_logs enable row level security;
 
 alter table public.projects add column if not exists completed_at timestamptz;
@@ -717,8 +737,25 @@ drop policy if exists credential_categories_delete on public.credential_categori
 create policy credential_categories_delete on public.credential_categories for delete to authenticated
   using (scope = 'shared' or owner_id = (select auth.uid()));
 drop policy if exists daily_task_logs_all on public.daily_task_logs;
-create policy daily_task_logs_all on public.daily_task_logs for all to authenticated
-  using (true) with check (true);
+drop policy if exists daily_task_logs_select on public.daily_task_logs;
+create policy daily_task_logs_select on public.daily_task_logs for select to authenticated
+  using (true);
+drop policy if exists daily_task_logs_insert on public.daily_task_logs;
+create policy daily_task_logs_insert on public.daily_task_logs for insert to authenticated
+  with check (
+    (state = 'done' and completed_by = (select auth.uid()) and completed_at is not null)
+    or (state <> 'done' and completed_by is null and completed_at is null)
+  );
+drop policy if exists daily_task_logs_update on public.daily_task_logs;
+create policy daily_task_logs_update on public.daily_task_logs for update to authenticated
+  using (true)
+  with check (
+    (state = 'done' and completed_by = (select auth.uid()) and completed_at is not null)
+    or (state <> 'done' and completed_by is null and completed_at is null)
+  );
+drop policy if exists daily_task_logs_delete on public.daily_task_logs;
+create policy daily_task_logs_delete on public.daily_task_logs for delete to authenticated
+  using (true);
 
 drop policy if exists elabela_assets_insert on storage.objects;
 create policy elabela_assets_insert on storage.objects for insert to authenticated

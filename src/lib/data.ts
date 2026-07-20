@@ -3,14 +3,15 @@
  * Used to render every module fully populated before the Supabase tables are wired.
  */
 
+import { paraguayDateKey } from "@/lib/paraguay-time";
+
 export type TaskState = "todo" | "doing" | "done";
 
 export interface DailyTask {
   id: string;
   name: string;
   icon: string;
-  assignee: string; // profile username assigned TODAY
-  state: TaskState;
+  assignee: string | null;
   note?: string;
   /** If present with 2+ users, the task rotates among them day by day; otherwise it's fixed to `assignee`. */
   rotation?: string[];
@@ -26,91 +27,25 @@ export interface DailyTask {
   postType?: string;
 }
 
-/**
- * Tarea SEMANAL: como un proyecto chico — vive en una bolsa sin fecha y se
- * arrastra al calendario para agendarla un día con su responsable. Puede
- * hacerse una vez a la semana o no hacerse. Las tareas diarias se pueden
- * convertir en semanales.
- */
-export interface WeeklyTask {
+export interface DailyTaskLog {
   id: string;
-  name: string;
-  icon: string;
-  assignee: string;
-  /** Fecha agendada en el calendario (ausente = sin agendar). */
-  date?: string;
+  taskId: string;
+  activityDate: string;
   state: TaskState;
-  /** Id del tipo de post (opcional). */
-  postType?: string;
-  createdAt: string;
+  taskNameSnapshot: string;
+  taskIconSnapshot: string;
+  assigneeSnapshot: string | null;
+  completedBy?: string;
+  completedAt?: string;
+  updatedAt: string;
 }
-
-/** Whether the task uses per-day fixed owners (modo «Por día»). */
-export const taskIsPerDay = (t: DailyTask) => !!t.dayAssignees && t.dayAssignees.some(Boolean);
 
 /** Weekday labels, Monday-first (matches the `days` indices of DailyTask). */
 export const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] as const;
 
-/** Today's Monday-first weekday index (0 = Lunes … 6 = Domingo). */
-export const todayWeekday = () => (new Date().getDay() + 6) % 7;
-
-/** Whether a daily task is scheduled for today (no `days` = every day). */
-export const taskAppliesToday = (t: DailyTask) => {
-  if (taskIsPerDay(t)) return !!t.dayAssignees![todayWeekday()];
-  return !t.days || t.days.length === 0 || t.days.includes(todayWeekday());
-};
-
 /** Day of the year (1 = 1 de enero), via UTC so the rotation is deterministic. */
 export const dayOfYear = (d = new Date()) =>
   Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 1)) / 86400000) + 1;
-
-/** Epoch fijo para la rotación (lunes 1 de enero de 2024) — determinístico entre sesiones. */
-const ROTATION_EPOCH_UTC = Date.UTC(2024, 0, 1);
-
-/**
- * Who the task belongs to TODAY. Rotating tasks advance one member per each
- * day the task APPLIES (its `days` selection): a Lun·Mié·Vie task hands off
- * only on those days. Tasks without `days` rotate every day; fixed tasks
- * return their `assignee`.
- */
-/**
- * Whether the task belongs to this member. A rotating task belongs to EVERY
- * member of the rotation (whoever is free can cover it); a per-day task
- * belongs to whoever owns at least one day; the daily priority
- * («a quién le toca hoy») is `taskAssigneeToday`.
- */
-export const taskBelongsTo = (t: DailyTask, username: string) => {
-  if (taskIsPerDay(t)) return t.dayAssignees!.includes(username);
-  return t.rotation && t.rotation.length > 1 ? t.rotation.includes(username) : t.assignee === username;
-};
-
-/**
- * Whether the task counts as MINE today. Rotating tasks are shared (every
- * member sees them today, with a turn chip); per-day tasks are FIXED to the
- * day's owner; fixed tasks require being the assignee.
- */
-export const taskMineToday = (t: DailyTask, username: string) => {
-  if (!taskAppliesToday(t)) return false;
-  if (taskIsPerDay(t)) return t.dayAssignees![todayWeekday()] === username;
-  return taskBelongsTo(t, username);
-};
-
-export const taskAssigneeToday = (t: DailyTask, date = new Date()) => {
-  if (taskIsPerDay(t)) {
-    const wd = (date.getDay() + 6) % 7;
-    return t.dayAssignees![wd] || t.assignee;
-  }
-  if (!t.rotation || t.rotation.length < 2) return t.assignee;
-  const diff = Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - ROTATION_EPOCH_UTC) / 86400000);
-  if (!t.days || t.days.length === 0 || t.days.length === 7) return t.rotation[((diff % t.rotation.length) + t.rotation.length) % t.rotation.length];
-  // Cantidad de días aplicables transcurridos ANTES de hoy (el epoch es lunes,
-  // así que weekday(offset) === offset % 7 con índice lunes-primero).
-  const fullWeeks = Math.floor(diff / 7);
-  const rem = diff % 7;
-  let count = fullWeeks * t.days.length;
-  for (const d of t.days) if (d < rem) count++;
-  return t.rotation[count % t.rotation.length];
-};
 
 /** Fecha corta es-PY («16 jul.») desde una fecha ISO yyyy-mm-dd. */
 export const fmtShortDate = (d?: string) =>
@@ -118,20 +53,20 @@ export const fmtShortDate = (d?: string) =>
 
 /** Daily recurring tasks — from the "Tareas Diarias" group. */
 export const DAILY_TASKS: DailyTask[] = [
-  { id: "t1", name: "Crear portada de video", icon: "🎨", assignee: "bryan", state: "done" },
-  { id: "t2", name: "Comunidad WhatsApp", icon: "👥", assignee: "elizabeth", state: "doing" },
-  { id: "t3", name: "Crear video Avatar", icon: "🧑‍🎤", assignee: "cielo", state: "doing" },
-  { id: "t4", name: "Crear Imágenes en Pedestal", icon: "🖼️", assignee: "elizabeth", state: "todo" },
-  { id: "t5", name: "Editar Video", icon: "✂️", assignee: "cielo", state: "todo" },
-  { id: "t6", name: "Subir Post IG", icon: "📤", assignee: "elizabeth", state: "todo" },
-  { id: "t7", name: "Crear Tutorial / Carrusel", icon: "📚", assignee: "cielo", state: "todo" },
-  { id: "t8", name: "Subir Post TikTok", icon: "📤", assignee: "elizabeth", state: "todo" },
-  { id: "t9", name: "Chats - Redes", icon: "💬", assignee: "bryan", state: "doing" },
-  { id: "t10", name: "Subir Post Facebook", icon: "📤", assignee: "elizabeth", state: "todo" },
-  { id: "t11", name: "Publicar Historias", icon: "📲", assignee: "cielo", state: "doing", note: "Ver panel de historias", rotation: ["cielo", "elizabeth"] },
-  { id: "t12", name: "Crear Banner WEB", icon: "🖥️", assignee: "elizabeth", state: "todo" },
-  { id: "t13", name: "Nutrición de Leads", icon: "🌱", assignee: "bryan", state: "todo" },
-  { id: "t14", name: "Cambiar Banner WEB", icon: "🔄", assignee: "elizabeth", state: "todo" },
+  { id: "t1", name: "Crear portada de video", icon: "🎨", assignee: "bryan" },
+  { id: "t2", name: "Comunidad WhatsApp", icon: "👥", assignee: "elizabeth" },
+  { id: "t3", name: "Crear video Avatar", icon: "🧑‍🎤", assignee: "cielo" },
+  { id: "t4", name: "Crear Imágenes en Pedestal", icon: "🖼️", assignee: "elizabeth" },
+  { id: "t5", name: "Editar Video", icon: "✂️", assignee: "cielo" },
+  { id: "t6", name: "Subir Post IG", icon: "📤", assignee: "elizabeth" },
+  { id: "t7", name: "Crear Tutorial / Carrusel", icon: "📚", assignee: "cielo" },
+  { id: "t8", name: "Subir Post TikTok", icon: "📤", assignee: "elizabeth" },
+  { id: "t9", name: "Chats - Redes", icon: "💬", assignee: "bryan" },
+  { id: "t10", name: "Subir Post Facebook", icon: "📤", assignee: "elizabeth" },
+  { id: "t11", name: "Publicar Historias", icon: "📲", assignee: "cielo", note: "Ver panel de historias", rotation: ["cielo", "elizabeth"] },
+  { id: "t12", name: "Crear Banner WEB", icon: "🖥️", assignee: "elizabeth" },
+  { id: "t13", name: "Nutrición de Leads", icon: "🌱", assignee: "bryan" },
+  { id: "t14", name: "Cambiar Banner WEB", icon: "🔄", assignee: "elizabeth" },
 ];
 
 export interface PostType {
@@ -188,11 +123,8 @@ export interface StoryPlatform {
   assignee: string;    // a quién le toca hoy
 }
 
-/** ISO de hoy (yyyy-mm-dd, hora local). */
-export const todayIso = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+/** ISO de hoy en Paraguay. */
+export const todayIso = () => paraguayDateKey();
 
 /** Historias subidas HOY (si el contador quedó de otro día, vale 0). */
 export const storyDoneToday = (s: StoryPlatform) => (s.doneDate === todayIso() ? s.done : 0);
