@@ -283,6 +283,8 @@ Category mutation rules:
 
 Replace hard-coded CATS filters with database categories. Provide an existing-style manage-categories modal for create, rename, icon/GIF, accent, kind, reorder, and safe delete/move. Every Tool edit explicitly chooses a category.
 
+Seed `Links Downloader` in `Apps` with `https://links-downloader.vercel.app/` and a concise description that it downloads public TikTok and Instagram videos without requiring registration. The seed must be idempotent and must not duplicate an existing row on repeated startup/migration.
+
 Move each prompt/link image above the title, use an object-contain aspect frame, and retain Lightbox, copy, steps, search, external-link, edit, and delete behavior. Replace simple pills with a responsive glass filter rail that shows icon, name, item count, selected state, keyboard focus, and horizontal mobile scrolling without changing the global visual language.
 
 Intent: teammate must locate or classify an ecosystem resource immediately.

@@ -370,6 +370,11 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     items: [
       { label: "Extractor de Metadatos de Imagen", href: "https://extractor-meta-datos-img.vercel.app/" },
       { label: "Content Studio IA", href: "https://content-studio-ia.vercel.app/" },
+      {
+        label: "Links Downloader",
+        href: "https://links-downloader.vercel.app/",
+        note: "Descarga videos públicos de TikTok e Instagram sin registro.",
+      },
     ],
   },
   {

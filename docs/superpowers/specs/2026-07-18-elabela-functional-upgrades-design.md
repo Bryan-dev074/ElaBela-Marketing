@@ -150,6 +150,9 @@ available during migration and is mapped to the seeded category IDs.
 ### Tool editing and filtering
 
 - Every tool explicitly selects a category.
+- Seed `Links Downloader` in `Apps` with the direct URL
+  `https://links-downloader.vercel.app/` and describe it as a no-registration
+  downloader for public TikTok and Instagram videos.
 - The category determines the default card presentation, while an existing item
   retains its compatible `kind` during migration.
 - Filters are generated from category rows rather than hard-coded constants.

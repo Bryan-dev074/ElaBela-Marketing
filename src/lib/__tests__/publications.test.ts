@@ -10,6 +10,7 @@ const tools: ToolItem[] = [
   {
     id: "tool-1",
     category: "apps",
+    categoryId: "apps",
     kind: "link",
     title: "Primera herramienta",
     note: "",
@@ -21,6 +22,7 @@ const tools: ToolItem[] = [
   {
     id: "tool-2",
     category: "ia",
+    categoryId: "ia",
     kind: "prompt",
     title: "Segunda herramienta",
     note: "",

@@ -16,6 +16,21 @@ create table if not exists public.tool_categories (
 );
 alter table public.tool_categories enable row level security;
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.tool_categories'::regclass
+      and conname = 'tool_categories_name_nonblank'
+  ) then
+    alter table public.tool_categories
+      add constraint tool_categories_name_nonblank check (char_length(btrim(name)) > 0);
+  end if;
+end
+$$;
+create unique index if not exists tool_categories_name_ci_unique
+  on public.tool_categories (lower(btrim(name)));
+
 insert into public.tool_categories (id, name, icon, accent, kind, sort) values
   ('prompts', 'Prompts', '💬', '#d6ab99', 'prompt', 0),
   ('ia', 'IA', '🤖', '#818cf8', 'link', 1),
@@ -27,16 +42,110 @@ on conflict (id) do nothing;
 
 alter table public.tool_items add column if not exists category_id text references public.tool_categories(id);
 update public.tool_items
-set category_id = case category
+set category_id = case lower(btrim(category))
   when 'gems' then 'ia'
+  when 'gems de gemini' then 'ia'
   when 'links' then 'redes-sociales'
+  when 'enlaces oficiales' then 'redes-sociales'
   when 'prompts' then 'prompts'
   when 'ia' then 'ia'
   when 'apps' then 'apps'
   when 'ads' then 'ads'
+  when 'enlaces' then 'enlaces'
+  when 'redes-sociales' then 'redes-sociales'
   else null
 end
 where category_id is null;
+
+insert into public.tool_items (id, category, category_id, kind, title, note, href, icon)
+select
+  'links-downloader',
+  'apps',
+  'apps',
+  'link',
+  'Links Downloader',
+  'Descarga videos públicos de TikTok e Instagram sin registro.',
+  'https://links-downloader.vercel.app/',
+  '⬇️'
+where not exists (
+  select 1 from public.tool_items
+  where id = 'links-downloader'
+     or lower(btrim(title)) = 'links downloader'
+     or href = 'https://links-downloader.vercel.app/'
+)
+on conflict (id) do nothing;
+
+create or replace function public.move_and_delete_tool_category(
+  p_category_id text,
+  p_destination_id text default null
+)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  referenced_count bigint;
+  destination_kind text;
+begin
+  if p_destination_id = p_category_id then
+    raise exception 'La categoría de destino debe ser diferente.';
+  end if;
+
+  select count(*) into referenced_count
+  from public.tool_items
+  where category_id = p_category_id;
+
+  if referenced_count > 0 and p_destination_id is null then
+    raise exception 'La categoría tiene % recursos; elegí un destino.', referenced_count;
+  end if;
+
+  if p_destination_id is not null then
+    select kind into destination_kind
+    from public.tool_categories
+    where id = p_destination_id;
+    if destination_kind is null then
+      raise exception 'La categoría de destino no existe.';
+    end if;
+
+    update public.tool_items
+    set category_id = p_destination_id,
+        category = case when p_destination_id = 'redes-sociales' then 'links' else p_destination_id end,
+        kind = destination_kind,
+        href = case when destination_kind = 'prompt' then null else href end,
+        steps = case when destination_kind = 'link' then null else steps end
+    where category_id = p_category_id;
+  end if;
+
+  delete from public.tool_categories where id = p_category_id;
+  if not found then
+    raise exception 'La categoría no existe.';
+  end if;
+end;
+$$;
+
+create or replace function public.sync_tool_category_kind()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if new.kind is distinct from old.kind then
+    update public.tool_items
+    set kind = new.kind,
+        href = case when new.kind = 'prompt' then null else href end,
+        steps = case when new.kind = 'link' then null else steps end
+    where category_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_tool_category_kind on public.tool_categories;
+create trigger sync_tool_category_kind
+after update of kind on public.tool_categories
+for each row execute function public.sync_tool_category_kind();
 
 alter table public.brand_assets add column if not exists file_url text;
 alter table public.brand_assets add column if not exists file_format text;
@@ -136,3 +245,5 @@ grant select, insert, update, delete on table
   public.credential_categories,
   public.daily_task_logs
 to authenticated;
+
+grant execute on function public.move_and_delete_tool_category(text, text) to authenticated;

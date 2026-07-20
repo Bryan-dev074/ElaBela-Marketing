@@ -10,7 +10,7 @@ vi.mock("@/lib/supabase/client", () => ({
   }),
 }));
 
-import { removeAssetByPublicUrl, validateAssetFile } from "@/lib/storage";
+import { isManagedAssetUrl, removeAssetByPublicUrl, validateAssetFile } from "@/lib/storage";
 
 describe("validateAssetFile", () => {
   it("accepts an image within the configured size limit", () => {
@@ -75,5 +75,13 @@ describe("removeAssetByPublicUrl", () => {
     });
 
     expect(remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("isManagedAssetUrl", () => {
+  it("recognizes only the configured ElaBela Storage bucket", () => {
+    expect(isManagedAssetUrl("https://example.supabase.co/storage/v1/object/public/elabela-assets/tools/image.png")).toBe(true);
+    expect(isManagedAssetUrl("https://cdn.example/tools/image.png")).toBe(false);
+    expect(isManagedAssetUrl("not-a-url")).toBe(false);
   });
 });

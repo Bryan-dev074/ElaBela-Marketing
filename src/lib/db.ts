@@ -7,6 +7,12 @@ import {
   type DailyTask, type Project, type Guion, type Client, type Product, type PostType, type StoryPlatform, type WeeklyTask,
 } from "@/lib/data";
 import { normalizePublicationImages } from "@/lib/publications";
+import {
+  DEFAULT_TOOL_CATEGORIES,
+  ensureLinksDownloader,
+  normalizeLegacyCategory,
+  type ToolCategoryRow,
+} from "@/lib/tool-categories";
 
 const supabase = createClient();
 const nn = (v: string | undefined) => (v && v.length ? v : null); // "" -> null for date cols
@@ -281,13 +287,7 @@ export const useStoryConfig = () =>
     toRow: (s) => ({ platform: s.platform, icon: s.icon, min: s.min, max: s.max, schedules: s.schedules, done: s.done, done_date: s.doneDate ?? null, assignee: s.assignee }),
   });
 
-export interface ToolItem { id: string; category: string; categoryId?: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string; steps: string }
-
-function normalizedToolCategoryId(category: string) {
-  if (category === "gems") return "ia";
-  if (category === "links") return "redes-sociales";
-  return category;
-}
+export interface ToolItem { id: string; category: string; categoryId: string; kind: "prompt" | "link"; title: string; note: string; href: string; image: string; icon: string; steps: string }
 
 function currentToolCategory(categoryId: string) {
   return categoryId === "redes-sociales" ? "links" : categoryId;
@@ -296,8 +296,8 @@ function currentToolCategory(categoryId: string) {
 export function toolItemFromRow(r: Record<string, unknown>): ToolItem {
   const legacyCategory = typeof r.category === "string" ? r.category : "";
   const categoryId = typeof r.category_id === "string" && r.category_id
-    ? r.category_id
-    : normalizedToolCategoryId(legacyCategory);
+    ? normalizeLegacyCategory(r.category_id)
+    : normalizeLegacyCategory(legacyCategory);
 
   return {
     id: r.id as string,
@@ -314,7 +314,7 @@ export function toolItemFromRow(r: Record<string, unknown>): ToolItem {
 }
 
 export function toolItemToRow(t: ToolItem): Record<string, unknown> {
-  const categoryId = t.category ? normalizedToolCategoryId(t.category) : t.categoryId ?? "";
+  const categoryId = normalizeLegacyCategory(t.categoryId || t.category || "");
   return {
     id: t.id,
     category: currentToolCategory(categoryId),
@@ -329,10 +329,10 @@ export function toolItemToRow(t: ToolItem): Record<string, unknown> {
   };
 }
 
-const TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i) => ({
+const LEGACY_TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i) => ({
   id: `${c.id}-${i}`,
-  category: currentToolCategory(normalizedToolCategoryId(c.id)),
-  categoryId: normalizedToolCategoryId(c.id),
+  category: currentToolCategory(normalizeLegacyCategory(c.id)),
+  categoryId: normalizeLegacyCategory(c.id),
   kind: c.kind,
   title: it.label,
   note: it.note ?? "",
@@ -341,6 +341,9 @@ const TOOL_SEED: ToolItem[] = TOOL_CATEGORIES.flatMap((c) => c.items.map((it, i)
   icon: "",
   steps: "",
 })));
+const TOOL_SEED: ToolItem[] = ensureLinksDownloader(
+  LEGACY_TOOL_SEED.filter((tool) => tool.title !== "Links Downloader"),
+) as ToolItem[];
 export const useToolItems = () =>
   useCollection<ToolItem>({
     table: "tool_items",
@@ -349,6 +352,46 @@ export const useToolItems = () =>
     fromRow: toolItemFromRow,
     toRow: toolItemToRow,
   });
+
+export function toolCategoryFromRow(r: Record<string, unknown>): ToolCategoryRow {
+  return {
+    id: r.id as string,
+    name: (r.name as string)?.trim(),
+    icon: (r.icon as string) || "✨",
+    accent: (r.accent as string) || "#d6ab99",
+    kind: r.kind === "prompt" ? "prompt" : "link",
+    sort: typeof r.sort === "number" ? r.sort : 0,
+    createdAt: (r.created_at as string) || "",
+  };
+}
+
+export function toolCategoryToRow(category: ToolCategoryRow): Record<string, unknown> {
+  return {
+    id: category.id,
+    name: category.name.trim(),
+    icon: category.icon || "✨",
+    accent: category.accent,
+    kind: category.kind,
+    sort: category.sort,
+  };
+}
+
+export const useToolCategories = () =>
+  useCollection<ToolCategoryRow>({
+    table: "tool_categories",
+    seed: DEFAULT_TOOL_CATEGORIES,
+    order: { col: "sort" },
+    fromRow: toolCategoryFromRow,
+    toRow: toolCategoryToRow,
+  });
+
+export async function moveAndDeleteToolCategory(categoryId: string, destinationId?: string): Promise<CollectionMutationResult> {
+  const { error } = await supabase.rpc("move_and_delete_tool_category", {
+    p_category_id: categoryId,
+    p_destination_id: destinationId ?? null,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
 
 export interface CalEventRow { id: string; date: string; kind: "tarea" | "proyecto"; title: string; owner: string }
 export const useCalendarEvents = () =>

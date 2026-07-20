@@ -45,6 +45,14 @@ function pathFromPublicUrl(url: string) {
   return pathname.startsWith(publicPrefix) ? decodeURIComponent(pathname.slice(publicPrefix.length)) : null;
 }
 
+export function isManagedAssetUrl(url: string) {
+  try {
+    return pathFromPublicUrl(url) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export async function uploadAsset(file: File, folder: AssetFolder): Promise<AssetMutationResult> {
   const path = `${folder}/${Date.now()}-${crypto.randomUUID()}.${sanitizedExtension(file)}`;
   const supabase = createClient();

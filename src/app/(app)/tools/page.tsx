@@ -1,42 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, X, Copy, Check, Plus, Pencil, Trash2, ImagePlus, ArrowUpRight, Quote, Link2 } from "lucide-react";
+import { Search, X, Copy, Check, Plus, Pencil, Trash2, ImagePlus, ArrowUpRight, Quote, Link2, Settings2 } from "lucide-react";
 import { PageHeader, Button, Modal, Field, Input, Textarea, Select, EmptyState, IconGlyph } from "@/components/ui";
 import { IconPicker } from "@/components/IconPicker";
 import { Lightbox } from "@/components/Lightbox";
-import { TOOL_CATEGORIES } from "@/lib/data";
-import { useToolItems, type ToolItem } from "@/lib/db";
+import { ToolCategoryManager } from "@/components/ToolCategoryManager";
+import { moveAndDeleteToolCategory, useToolCategories, useToolItems, type ToolItem } from "@/lib/db";
 import { fileToImage } from "@/lib/profiles";
+import { isManagedAssetUrl, removeAssetByPublicUrl, uploadAsset, validateAssetFile } from "@/lib/storage";
+import {
+  UNCATEGORIZED_CATEGORY,
+  UNCATEGORIZED_ID,
+  assetFileFromDataUrl,
+  resolveCategoryId,
+  safeExternalUrl,
+  type ToolCategoryRow,
+} from "@/lib/tool-categories";
 
 /* ---------------- Categorías + acentos ---------------- */
 
-type Kind = "prompt" | "link";
-const CATS = TOOL_CATEGORIES.map((c) => ({ id: c.id, title: c.title, emoji: c.emoji, kind: c.kind }));
-
-/** Acento propio por categoría: el color comunica de qué familia es cada recurso. */
-const ACCENTS: Record<string, string> = {
-  prompts: "#d6ab99",
-  gems: "#818cf8",
-  apps: "#22d3ee",
-  ia: "#34d399",
-  ads: "#fbbf24",
-  links: "#f472b6",
-};
 const NUDE = "#d6ab99";
-const accentOf = (cat: string) => ACCENTS[cat] ?? NUDE;
-const kindOf = (cat: string): Kind => CATS.find((c) => c.id === cat)?.kind ?? "link";
-const catMeta = (id: string) => CATS.find((c) => c.id === id) ?? { id, title: id, emoji: "✨", kind: "link" as Kind };
-const emptyItem = (category = CATS[0].id): ToolItem => ({ id: "", category, kind: kindOf(category), title: "", note: "", href: "", image: "", icon: "", steps: "" });
+const emptyItem = (category: ToolCategoryRow): ToolItem => ({ id: "", category: category.id, categoryId: category.id, kind: category.kind, title: "", note: "", href: "", image: "", icon: "", steps: "" });
 const isImgSrc = (v: string) => v.startsWith("data:") || v.startsWith("http");
 
 const hostOf = (href: string): string | null => {
-  try {
-    return new URL(href).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
+  const safe = safeExternalUrl(href);
+  return safe ? new URL(safe).hostname.replace(/^www\./, "") : null;
 };
 const faviconUrl = (host: string) => `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
 
@@ -71,15 +62,14 @@ function AccentBand({ accent }: { accent: string }) {
   );
 }
 
-function CategoryChip({ id }: { id: string }) {
-  const c = catMeta(id);
-  const accent = accentOf(id);
+function CategoryChip({ category }: { category: ToolCategoryRow }) {
+  const accent = category.accent;
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
       style={{ color: accent, background: `${accent}14`, border: `1px solid ${accent}38`, boxShadow: `0 0 14px -6px ${accent}88` }}
     >
-      <span className="text-[11px] leading-none">{c.emoji}</span> {c.title}
+      <IconGlyph icon={category.icon} size={14} rounded="rounded-sm" /> {category.name}
     </span>
   );
 }
@@ -124,12 +114,8 @@ function DeleteBtn({ onConfirm }: { onConfirm: () => void }) {
   );
 }
 
-/**
- * Visual del recurso: ícono elegido (emoji o imagen/GIF) > imagen custom >
- * favicon del dominio > tile con inicial. Si el recurso tiene imagen, el tile
- * se puede tocar para verla en grande (Lightbox).
- */
-function LinkVisual({ item, accent, onView }: { item: ToolItem; accent: string; onView?: (src: string) => void }) {
+/** Visual compacto: ícono elegido > favicon del dominio > tile con inicial. */
+function LinkVisual({ item, accent }: { item: ToolItem; accent: string }) {
   const host = item.href ? hostOf(item.href) : null;
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [host, item.image]);
@@ -143,11 +129,6 @@ function LinkVisual({ item, accent, onView }: { item: ToolItem; accent: string; 
       >
         <IconGlyph icon={item.icon} size={isImgSrc(item.icon) ? 48 : 26} rounded="rounded-xl" />
       </span>
-    );
-  } else if (item.image) {
-    inner = (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={item.image} alt="" className="h-12 w-12 rounded-xl border border-white/10 object-cover" />
     );
   } else if (host && !failed) {
     inner = (
@@ -177,43 +158,65 @@ function LinkVisual({ item, accent, onView }: { item: ToolItem; accent: string; 
     );
   }
 
-  if (item.image && onView) {
-    return (
-      <button
-        type="button"
-        onClick={() => onView(item.image)}
-        aria-label={`Ver imagen de ${item.title}`}
-        data-cursor-label="Ver imagen"
-        className="press pointer-events-auto relative z-[2] shrink-0"
-      >
-        {inner}
-      </button>
-    );
-  }
   return <span className="shrink-0">{inner}</span>;
+}
+
+function ToolMedia({ item, onView }: { item: ToolItem; onView: () => void }) {
+  if (!item.image) return null;
+  return (
+    <button
+      type="button"
+      onClick={onView}
+      aria-label={`Ver imagen de ${item.title}`}
+      data-cursor-label="Ver en grande"
+      className="press pointer-events-auto relative z-[2] mt-3 block aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black/30"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={item.image} alt="" className="h-full w-full object-contain p-1 transition duration-300 hover:brightness-110" />
+    </button>
+  );
 }
 
 /* ---------------- Página ---------------- */
 
 export default function ToolsPage() {
-  const { items, add, update, remove } = useToolItems();
+  const toolStore = useToolItems();
+  const categoryStore = useToolCategories();
+  const { items, addAsync, updateAsync, removeAsync, setItems: setToolItems } = toolStore;
+  const categories = useMemo(() => [...categoryStore.items].sort((a, b) => a.sort - b.sort), [categoryStore.items]);
   const [filter, setFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<ToolItem | null>(null);
+  const [editingOriginal, setEditingOriginal] = useState<ToolItem | null>(null);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [managingCategories, setManagingCategories] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<{ src: string; caption?: string } | null>(null);
+  const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [imgErr, setImgErr] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const categoryFor = (item: ToolItem) => {
+    const resolved = resolveCategoryId(item.categoryId, categories);
+    return resolved === UNCATEGORIZED_ID ? UNCATEGORIZED_CATEGORY : categories.find((category) => category.id === resolved) ?? UNCATEGORIZED_CATEGORY;
+  };
+  const categoryById = (id: string) => categories.find((category) => category.id === id);
+  const hasUncategorized = items.some((item) => resolveCategoryId(item.categoryId, categories) === UNCATEGORIZED_ID);
+  const filterCategories = hasUncategorized ? [...categories, UNCATEGORIZED_CATEGORY] : categories;
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter(
       (i) =>
-        (filter === "all" || i.category === filter) &&
+        (filter === "all" || resolveCategoryId(i.categoryId, categories) === filter) &&
         (!q || i.title.toLowerCase().includes(q) || i.note.toLowerCase().includes(q))
     );
-  }, [items, filter, query]);
+  }, [categories, items, filter, query]);
+  const mediaItems = useMemo(() => shown.filter((item) => item.image), [shown]);
+  const lightboxIndex = lightboxId ? mediaItems.findIndex((item) => item.id === lightboxId) : -1;
+  const activeLightboxItem = lightboxIndex >= 0 ? mediaItems[lightboxIndex] : null;
   const isFiltering = filter !== "all" || query.trim() !== "";
 
   const copy = (text: string, id: string) =>
@@ -223,12 +226,107 @@ export default function ToolsPage() {
       copyTimer.current = setTimeout(() => setCopied(null), 1500);
     });
 
-  function save() {
+  function beginEdit(item: ToolItem) {
+    setEditing({ ...item });
+    setEditingOriginal(item.id ? item : null);
+    setPendingImage(null);
+    setImgErr(null);
+    setMutationError(null);
+  }
+
+  async function cleanupUploads(urls: string[]) {
+    await Promise.all(urls.map((url) => removeAssetByPublicUrl(url)));
+  }
+
+  async function deleteTool(item: ToolItem) {
+    setMutationError(null);
+    const result = await removeAsync(item.id);
+    if (!result.ok) {
+      setMutationError(result.error);
+      return;
+    }
+    const storedAssets = [item.image, item.icon].filter(isManagedAssetUrl);
+    const cleanupResults = await Promise.all(storedAssets.map((url) => removeAssetByPublicUrl(url)));
+    const cleanupFailure = cleanupResults.find((cleanup) => !cleanup.ok);
+    if (cleanupFailure && !cleanupFailure.ok) setMutationError(`El recurso se eliminó, pero no se pudo limpiar un archivo: ${cleanupFailure.error}`);
+  }
+
+  async function save() {
     if (!editing || !editing.title.trim()) return;
-    const it: ToolItem = { ...editing, kind: kindOf(editing.category) };
-    if (editing.id) update(editing.id, it);
-    else add({ ...it, id: "it" + Date.now() });
+    const category = categoryById(editing.categoryId);
+    if (!category) {
+      setMutationError("Elegí una categoría válida.");
+      return;
+    }
+    const safeHref = editing.href.trim() ? safeExternalUrl(editing.href) : "";
+    if (category.kind === "link" && editing.href.trim() && !safeHref) {
+      setMutationError("Usá un enlace HTTP o HTTPS válido.");
+      return;
+    }
+
+    setSaving(true);
+    setMutationError(null);
+    const uploadedUrls: string[] = [];
+    let image = editing.image;
+    let icon = editing.icon;
+    if (pendingImage) {
+      const uploaded = await uploadAsset(pendingImage, "tools");
+      if (!uploaded.ok) {
+        setMutationError(uploaded.error);
+        setSaving(false);
+        return;
+      }
+      image = uploaded.url;
+      uploadedUrls.push(uploaded.url);
+    }
+    if (icon.startsWith("data:")) {
+      let iconFile: File;
+      try {
+        iconFile = assetFileFromDataUrl(icon, "tool-icon");
+      } catch (error) {
+        await cleanupUploads(uploadedUrls);
+        setMutationError(error instanceof Error ? error.message : "El ícono personalizado no es válido.");
+        setSaving(false);
+        return;
+      }
+      const uploaded = await uploadAsset(iconFile, "tools");
+      if (!uploaded.ok) {
+        await cleanupUploads(uploadedUrls);
+        setMutationError(uploaded.error);
+        setSaving(false);
+        return;
+      }
+      icon = uploaded.url;
+      uploadedUrls.push(uploaded.url);
+    }
+
+    const it: ToolItem = {
+      ...editing,
+      id: editing.id || `it-${crypto.randomUUID()}`,
+      title: editing.title.trim(),
+      category: category.id,
+      categoryId: category.id,
+      kind: category.kind,
+      href: category.kind === "link" ? safeHref || "" : "",
+      steps: category.kind === "prompt" ? editing.steps : "",
+      image,
+      icon,
+    };
+    const result = editing.id ? await updateAsync(editing.id, it) : await addAsync(it);
+    if (!result.ok) {
+      await cleanupUploads(uploadedUrls);
+      setMutationError(result.error);
+      setSaving(false);
+      return;
+    }
+    const replacedAssets = [editingOriginal?.image, editingOriginal?.icon].filter((url): url is string => !!url && isManagedAssetUrl(url) && url !== image && url !== icon);
+    const cleanupResults = await Promise.all(replacedAssets.map((url) => removeAssetByPublicUrl(url)));
+    const cleanupFailure = cleanupResults.find((result) => !result.ok);
+    if (cleanupFailure && !cleanupFailure.ok) setMutationError(`El recurso se guardó, pero no se pudo limpiar el archivo anterior: ${cleanupFailure.error}`);
     setEditing(null);
+    setEditingOriginal(null);
+    setPendingImage(null);
+    setSaving(false);
   }
 
   function onImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -236,12 +334,13 @@ export default function ToolsPage() {
     e.target.value = "";
     if (!f) return;
     setImgErr(null);
+    const validation = validateAssetFile(f, { kind: "image", maxBytes: 8 * 1024 * 1024 });
+    if (!validation.ok) {
+      setImgErr(validation.error);
+      return;
+    }
+    setPendingImage(f);
     if (f.type === "image/gif") {
-      // GIF: sin comprimir para conservar la animación (tope de peso).
-      if (f.size > 2_500_000) {
-        setImgErr("El GIF es muy pesado (máx. 2,5 MB).");
-        return;
-      }
       const r = new FileReader();
       r.onload = () => setEditing((c) => (c ? { ...c, image: String(r.result) } : c));
       r.readAsDataURL(f);
@@ -258,6 +357,54 @@ export default function ToolsPage() {
 
   const editingHost = editing?.href ? hostOf(editing.href) : null;
 
+  async function addCategory(category: ToolCategoryRow) {
+    return categoryStore.addAsync(category);
+  }
+
+  async function updateCategory(category: ToolCategoryRow) {
+    const result = await categoryStore.updateAsync(category.id, category);
+    if (result.ok) {
+      setToolItems((current) => current.map((tool) => tool.categoryId === category.id ? {
+        ...tool,
+        category: category.id,
+        kind: category.kind,
+        href: category.kind === "link" ? tool.href : "",
+        steps: category.kind === "prompt" ? tool.steps : "",
+      } : tool));
+    }
+    return result;
+  }
+
+  async function reorderCategories(reordered: ToolCategoryRow[]) {
+    for (const category of reordered) {
+      const result = await categoryStore.updateAsync(category.id, { sort: category.sort });
+      if (!result.ok) return result;
+    }
+    categoryStore.setItems(reordered);
+    return { ok: true as const };
+  }
+
+  async function deleteCategory(categoryId: string, destinationId?: string) {
+    const deletedCategory = categoryById(categoryId);
+    const result = await moveAndDeleteToolCategory(categoryId, destinationId);
+    if (!result.ok) return result;
+    categoryStore.setItems((current) => current.filter((category) => category.id !== categoryId));
+    setToolItems((current) => current.map((tool) => tool.categoryId === categoryId && destinationId ? {
+      ...tool,
+      category: destinationId,
+      categoryId: destinationId,
+      kind: categoryById(destinationId)?.kind ?? tool.kind,
+      href: categoryById(destinationId)?.kind === "prompt" ? "" : tool.href,
+      steps: categoryById(destinationId)?.kind === "link" ? "" : tool.steps,
+    } : tool));
+    if (filter === categoryId) setFilter(destinationId ?? "all");
+    if (deletedCategory && isManagedAssetUrl(deletedCategory.icon)) {
+      const cleanup = await removeAssetByPublicUrl(deletedCategory.icon);
+      if (!cleanup.ok) setMutationError(`La categoría se eliminó, pero no se pudo limpiar su ícono: ${cleanup.error}`);
+    }
+    return { ok: true as const };
+  }
+
   return (
     <div>
       <PageHeader
@@ -265,11 +412,26 @@ export default function ToolsPage() {
         title="Tools"
         description="Tu biblioteca viva: prompts listos para copiar, apps que se abren de un clic, GEMS, IA, ads y enlaces oficiales. Todo editable."
         action={
-          <Button onClick={() => setEditing(emptyItem(filter === "all" ? CATS[0].id : filter))}>
-            <Plus className="h-4 w-4" /> Agregar recurso
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="subtle" onClick={() => setManagingCategories(true)}>
+              <Settings2 className="h-4 w-4" /> Gestionar categorías
+            </Button>
+            <Button onClick={() => {
+              const selected = filter !== "all" ? categoryById(filter) : undefined;
+              const fallback = selected ?? categories[0];
+              if (fallback) beginEdit(emptyItem(fallback));
+            }} disabled={categories.length === 0}>
+              <Plus className="h-4 w-4" /> Agregar recurso
+            </Button>
+          </div>
         }
       />
+
+      {mutationError || toolStore.error || categoryStore.error ? (
+        <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {mutationError || toolStore.error || categoryStore.error}
+        </div>
+      ) : null}
 
       {/* Barra superior: buscador + contador total */}
       <div className="mb-4 flex flex-wrap items-center gap-4">
@@ -300,11 +462,13 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      {/* Chips de categoría con contador */}
-      <div className="mb-8 flex flex-wrap gap-2">
+      {/* Rail dinámico de categorías con contador */}
+      <div className="glass no-scrollbar mb-8 flex snap-x items-center gap-2 overflow-x-auto rounded-2xl p-2" role="navigation" aria-label="Filtros de categorías">
         <button
+          type="button"
           onClick={() => setFilter("all")}
-          className={`press inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-xs font-medium transition ${
+          aria-pressed={filter === "all"}
+          className={`press inline-flex h-11 shrink-0 snap-start items-center gap-1.5 rounded-xl border px-4 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
             filter === "all"
               ? "border-white/40 bg-white text-black shadow-[0_4px_18px_-6px_rgba(255,255,255,0.4)]"
               : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"
@@ -312,21 +476,23 @@ export default function ToolsPage() {
         >
           Todo <span className="num opacity-60">{items.length}</span>
         </button>
-        {CATS.map((c) => {
-          const n = items.filter((i) => i.category === c.id).length;
-          const active = filter === c.id;
-          const accent = accentOf(c.id);
+        {filterCategories.map((category) => {
+          const n = items.filter((item) => resolveCategoryId(item.categoryId, categories) === category.id).length;
+          const active = filter === category.id;
+          const accent = category.accent;
           return (
             <button
-              key={c.id}
-              onClick={() => setFilter(active ? "all" : c.id)}
+              type="button"
+              key={category.id}
+              onClick={() => setFilter(active ? "all" : category.id)}
+              aria-pressed={active}
               data-cursor-color={accent}
-              className={`press inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-xs font-medium transition ${
+              className={`press inline-flex h-11 shrink-0 snap-start items-center gap-1.5 rounded-xl border px-4 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
                 active ? "text-white" : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"
               }`}
               style={active ? { borderColor: `${accent}66`, background: `${accent}1c`, boxShadow: `0 0 20px -8px ${accent}cc` } : undefined}
             >
-              <span aria-hidden>{c.emoji}</span> {c.title}{" "}
+              <IconGlyph icon={category.icon} size={16} rounded="rounded-sm" /> {category.name}{" "}
               <span className="num" style={active ? { color: accent } : { opacity: 0.5 }}>
                 {n}
               </span>
@@ -339,11 +505,12 @@ export default function ToolsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence mode="popLayout">
           {shown.map((item, i) => {
-            const accent = accentOf(item.category);
+            const category = categoryFor(item);
+            const accent = category.accent;
             const isCopied = copied === item.id;
 
             /* ---------- Tarjeta PROMPT — cita / terminal ---------- */
-            if (item.kind === "prompt") {
+            if (category.kind === "prompt") {
               const text = item.note || item.title;
               const steps = (item.steps || "").split("\n").map((s) => s.trim()).filter(Boolean);
               return (
@@ -359,10 +526,12 @@ export default function ToolsPage() {
                       <Quote className="h-3 w-3" /> Prompt
                     </span>
                     <div className="flex items-center gap-1.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                      <EditBtn onClick={() => setEditing(item)} />
-                      <DeleteBtn onConfirm={() => remove(item.id)} />
+                      <EditBtn onClick={() => beginEdit(item)} />
+                      <DeleteBtn onConfirm={() => { void deleteTool(item); }} />
                     </div>
                   </div>
+
+                  <ToolMedia item={item} onView={() => setLightboxId(item.id)} />
 
                   <h3 className="relative z-[1] mt-3 flex items-center gap-2 text-base font-semibold text-white">
                     {item.icon && <IconGlyph icon={item.icon} size={isImgSrc(item.icon) ? 26 : 18} rounded="rounded-md" />}
@@ -404,20 +573,6 @@ export default function ToolsPage() {
                         ))}
                       </ol>
                     </div>
-                  )}
-
-                  {/* Imagen del recurso en bloque, tocable para verla en grande */}
-                  {item.image && (
-                    <button
-                      type="button"
-                      onClick={() => setLightbox({ src: item.image, caption: item.title })}
-                      aria-label={`Ver imagen de ${item.title}`}
-                      data-cursor-label="Ver en grande"
-                      className="press relative z-[1] mt-3 block w-full overflow-hidden rounded-xl border border-white/10"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.image} alt="" className="h-32 w-full object-cover transition duration-300 hover:brightness-110" />
-                    </button>
                   )}
 
                   {/* Botón grande de copiar con feedback animado */}
@@ -464,7 +619,8 @@ export default function ToolsPage() {
             }
 
             /* ---------- Tarjeta LINK / APP ---------- */
-            const host = item.href ? hostOf(item.href) : null;
+            const safeHref = item.href ? safeExternalUrl(item.href) : null;
+            const host = safeHref ? hostOf(safeHref) : null;
             return (
               <motion.article
                 key={item.id}
@@ -472,9 +628,9 @@ export default function ToolsPage() {
                 className="glass glass-hover card-sheen group relative flex flex-col overflow-hidden rounded-2xl p-5"
               >
                 <AccentBand accent={accent} />
-                {item.href && (
+                {safeHref && (
                   <a
-                    href={item.href}
+                    href={safeHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="absolute inset-0 z-0"
@@ -485,15 +641,17 @@ export default function ToolsPage() {
                 )}
 
                 <div className="pointer-events-none relative z-[1] flex items-center justify-between gap-2">
-                  <CategoryChip id={item.category} />
+                  <CategoryChip category={category} />
                   <div className="pointer-events-auto flex items-center gap-1.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                    <EditBtn onClick={() => setEditing(item)} />
-                    <DeleteBtn onConfirm={() => remove(item.id)} />
+                    <EditBtn onClick={() => beginEdit(item)} />
+                    <DeleteBtn onConfirm={() => { void deleteTool(item); }} />
                   </div>
                 </div>
 
+                <ToolMedia item={item} onView={() => setLightboxId(item.id)} />
+
                 <div className="pointer-events-none relative z-[1] mt-4 flex items-start gap-3.5">
-                  <LinkVisual item={item} accent={accent} onView={(src) => setLightbox({ src, caption: item.title })} />
+                  <LinkVisual item={item} accent={accent} />
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-base font-semibold text-white">{item.title}</h3>
                     {host ? (
@@ -510,27 +668,13 @@ export default function ToolsPage() {
                   </p>
                 )}
 
-                {/* Imagen del recurso en bloque; va por encima del <a> overlay */}
-                {item.image && (
-                  <button
-                    type="button"
-                    onClick={() => setLightbox({ src: item.image, caption: item.title })}
-                    aria-label={`Ver imagen de ${item.title}`}
-                    data-cursor-label="Ver en grande"
-                    className="press pointer-events-auto relative z-[2] mt-3 block w-full overflow-hidden rounded-xl border border-white/10"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={item.image} alt="" className="h-28 w-full object-cover transition duration-300 hover:brightness-110" />
-                  </button>
-                )}
-
                 <div className="pointer-events-none relative z-[1] mt-auto flex items-center justify-between pt-4">
-                  {item.href ? (
+                  {safeHref ? (
                     <span className="glow-text text-xs font-semibold tracking-wide">Abrir recurso</span>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setEditing(item)}
+                      onClick={() => beginEdit(item)}
                       data-cursor-label="Completar"
                       className="press pointer-events-auto flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-3 text-xs font-medium text-[var(--muted)] transition hover:border-nude/40 hover:text-nude"
                     >
@@ -540,7 +684,7 @@ export default function ToolsPage() {
                   {/* Doble flecha: sale por arriba-derecha y entra otra desde abajo-izquierda */}
                   <span
                     aria-hidden
-                    className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border ${item.href ? "" : "opacity-30"}`}
+                    className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border ${safeHref ? "" : "opacity-30"}`}
                     style={{ borderColor: `${accent}40`, color: accent, background: `${accent}0d` }}
                   >
                     <ArrowUpRight
@@ -580,11 +724,15 @@ export default function ToolsPage() {
           />
         ) : (
           <EmptyState
-            icon={filter === "all" ? "🧰" : catMeta(filter).emoji}
+            icon={filter === "all" ? "🧰" : <IconGlyph icon={(filterCategories.find((category) => category.id === filter) ?? UNCATEGORIZED_CATEGORY).icon} size={24} />}
             title="Sin recursos por acá"
             hint="Agregá el primero: un prompt, una app o un enlace del equipo."
             action={
-              <Button onClick={() => setEditing(emptyItem(filter === "all" ? CATS[0].id : filter))}>
+              <Button onClick={() => {
+                const selected = filter !== "all" ? categoryById(filter) : undefined;
+                const fallback = selected ?? categories[0];
+                if (fallback) beginEdit(emptyItem(fallback));
+              }} disabled={categories.length === 0}>
                 <Plus className="h-4 w-4" /> Agregar recurso
               </Button>
             }
@@ -594,22 +742,22 @@ export default function ToolsPage() {
       {/* Modal agregar / editar */}
       <Modal
         open={!!editing}
-        onClose={() => setEditing(null)}
+        onClose={() => { setEditing(null); setEditingOriginal(null); setPendingImage(null); setMutationError(null); }}
         title={editing?.id ? "Editar recurso" : "Nuevo recurso"}
         description={
           editing
-            ? kindOf(editing.category) === "prompt"
+            ? categoryById(editing.categoryId)?.kind === "prompt"
               ? "Los prompts se copian con un clic desde la tarjeta."
               : "Los links se abren en una pestaña nueva."
             : undefined
         }
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEditing(null)}>
+            <Button variant="ghost" onClick={() => { setEditing(null); setEditingOriginal(null); setPendingImage(null); setMutationError(null); }}>
               Cancelar
             </Button>
-            <Button onClick={save} disabled={!editing?.title.trim()}>
-              {editing?.id ? "Guardar cambios" : "Agregar"}
+            <Button onClick={save} disabled={saving || !editing?.title.trim() || !categoryById(editing.categoryId)}>
+              {saving ? "Guardando…" : editing?.id ? "Guardar cambios" : "Agregar"}
             </Button>
           </>
         }
@@ -623,10 +771,14 @@ export default function ToolsPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <Field label="Categoría">
-                  <Select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
-                    {CATS.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.emoji} {c.title}
+                  <Select value={editing.categoryId} onChange={(e) => {
+                    const category = categoryById(e.target.value);
+                    if (category) setEditing({ ...editing, category: category.id, categoryId: category.id, kind: category.kind });
+                  }}>
+                    <option value="" disabled>Elegí una categoría…</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
                       </option>
                     ))}
                   </Select>
@@ -637,19 +789,19 @@ export default function ToolsPage() {
               <Input
                 value={editing.title}
                 onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                placeholder={kindOf(editing.category) === "prompt" ? "Ej: Hook viral para Reels" : "Ej: Content Studio IA"}
+                placeholder={categoryById(editing.categoryId)?.kind === "prompt" ? "Ej: Hook viral para Reels" : "Ej: Content Studio IA"}
               />
             </Field>
-            <Field label={kindOf(editing.category) === "prompt" ? "Prompt (texto que se copia)" : "Descripción"}>
+            <Field label={categoryById(editing.categoryId)?.kind === "prompt" ? "Prompt (texto que se copia)" : "Descripción"}>
               <Textarea
-                rows={kindOf(editing.category) === "prompt" ? 6 : 2}
+                rows={categoryById(editing.categoryId)?.kind === "prompt" ? 6 : 2}
                 value={editing.note}
                 onChange={(e) => setEditing({ ...editing, note: e.target.value })}
-                className={kindOf(editing.category) === "prompt" ? "font-mono text-xs leading-relaxed" : undefined}
-                placeholder={kindOf(editing.category) === "prompt" ? "Pegá acá el prompt completo…" : "Una línea que explique para qué sirve"}
+                className={categoryById(editing.categoryId)?.kind === "prompt" ? "font-mono text-xs leading-relaxed" : undefined}
+                placeholder={categoryById(editing.categoryId)?.kind === "prompt" ? "Pegá acá el prompt completo…" : "Una línea que explique para qué sirve"}
               />
             </Field>
-            {kindOf(editing.category) === "prompt" && (
+            {categoryById(editing.categoryId)?.kind === "prompt" && (
               <Field label="Pasos para aplicarlo (opcional — uno por línea)">
                 <Textarea
                   rows={3}
@@ -660,7 +812,7 @@ export default function ToolsPage() {
                 <p className="mt-1.5 text-[11px] text-[var(--faint)]">Cada línea se muestra como un paso numerado en la tarjeta.</p>
               </Field>
             )}
-            {kindOf(editing.category) === "link" && (
+            {categoryById(editing.categoryId)?.kind === "link" && (
               <Field label="Link">
                 <div className="flex items-center gap-2">
                   <Input
@@ -692,22 +844,39 @@ export default function ToolsPage() {
                 {editing.image && (
                   <button
                     type="button"
-                    onClick={() => setEditing({ ...editing, image: "" })}
+                    onClick={() => { setPendingImage(null); setEditing({ ...editing, image: "" }); }}
                     className="text-xs text-[var(--faint)] transition hover:text-red-300"
                   >
                     Quitar
                   </button>
                 )}
               </div>
-              {imgErr && <p className="mt-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300">{imgErr}</p>}
+              {imgErr && <p role="alert" className="mt-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300">{imgErr}</p>}
               <p className="mt-1.5 text-[11px] text-[var(--faint)]">Los GIF conservan su animación. La imagen se ve en grande tocándola en la tarjeta.</p>
             </Field>
           </div>
         )}
       </Modal>
 
-      {/* Visor de imágenes en la misma página */}
-      <Lightbox src={lightbox?.src ?? null} caption={lightbox?.caption} onClose={() => setLightbox(null)} />
+      <ToolCategoryManager
+        open={managingCategories}
+        onClose={() => setManagingCategories(false)}
+        categories={categories}
+        tools={items}
+        onAdd={addCategory}
+        onUpdate={updateCategory}
+        onReorder={reorderCategories}
+        onDelete={deleteCategory}
+      />
+
+      {/* Visor de imágenes dentro de la colección filtrada */}
+      <Lightbox
+        images={lightboxIndex >= 0 ? mediaItems.map((item) => item.image) : []}
+        initialIndex={Math.max(0, lightboxIndex)}
+        alt={activeLightboxItem?.title ?? "Imagen de recurso"}
+        caption={activeLightboxItem?.title}
+        onClose={() => setLightboxId(null)}
+      />
     </div>
   );
 }

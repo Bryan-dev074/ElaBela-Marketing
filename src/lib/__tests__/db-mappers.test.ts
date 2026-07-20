@@ -1,4 +1,12 @@
-import { postTypeToRow, publicationFromRow, publicationToRow, toolItemFromRow, toolItemToRow } from "@/lib/db";
+import {
+  postTypeToRow,
+  publicationFromRow,
+  publicationToRow,
+  toolCategoryFromRow,
+  toolCategoryToRow,
+  toolItemFromRow,
+  toolItemToRow,
+} from "@/lib/db";
 
 describe("publicationFromRow", () => {
   it("falls back to the legacy example image when no image array exists", () => {
@@ -70,7 +78,7 @@ describe("publicationFromRow", () => {
     expect(toolItemToRow(item)).toMatchObject({ category: "apps", category_id: "apps" });
   });
 
-  it("persists a current-page category edit over a stale migrated category ID", () => {
+  it("persists categoryId as the current-page source of truth and synchronizes legacy category", () => {
     const loaded = toolItemFromRow({
       id: "tool-1",
       category: "ia",
@@ -78,11 +86,38 @@ describe("publicationFromRow", () => {
       kind: "link",
       title: "IA tool",
     });
-    const editedThroughPage = { ...loaded, category: "apps" };
+    const editedThroughPage = { ...loaded, categoryId: "apps" };
 
     expect(toolItemToRow(editedThroughPage)).toMatchObject({
       category: "apps",
       category_id: "apps",
+    });
+  });
+
+  it("normalizes visible legacy category labels while preserving new Enlaces", () => {
+    expect(toolItemFromRow({ id: "official", category: "Enlaces Oficiales", title: "Official" }).categoryId).toBe("redes-sociales");
+    expect(toolItemFromRow({ id: "legacy-id", category_id: "gems", category: "apps", title: "Legacy ID" }).categoryId).toBe("ia");
+    expect(toolItemFromRow({ id: "new-links", category: "enlaces", title: "New" }).categoryId).toBe("enlaces");
+  });
+
+  it("maps persisted tool categories in both directions", () => {
+    const category = toolCategoryFromRow({
+      id: "apps",
+      name: "Apps",
+      icon: "📲",
+      accent: "#22d3ee",
+      kind: "link",
+      sort: 2,
+      created_at: "2026-07-20T00:00:00Z",
+    });
+    expect(category).toMatchObject({ id: "apps", name: "Apps", kind: "link", createdAt: "2026-07-20T00:00:00Z" });
+    expect(toolCategoryToRow(category)).toEqual({
+      id: "apps",
+      name: "Apps",
+      icon: "📲",
+      accent: "#22d3ee",
+      kind: "link",
+      sort: 2,
     });
   });
 });
