@@ -479,7 +479,16 @@ describe("manual reconciliation safety and verification", () => {
     expect(keyConstraints).toMatch(
       /array_agg\(attribute\.attname::text order by key_column\.ordinality\)/i,
     );
-    expect(keyConstraints).toMatch(/constraint_state\.conname = required\.constraint_name/i);
+  });
+
+  it("accepts semantically equivalent PK and UNIQUE constraints regardless of their generated name", () => {
+    const verification = manual.match(/-- VERIFICATION[\s\S]*$/i)?.[0] ?? "";
+    const keyConstraints = verification.match(/key_constraints_ok as \([\s\S]*?\n  \),/i)?.[0] ?? "";
+
+    expect(keyConstraints).toMatch(/constraint_state\.conrelid = \('public\.' \|\| required\.table_name\)::regclass/i);
+    expect(keyConstraints).toMatch(/constraint_state\.contype = required\.constraint_type::"char"/i);
+    expect(keyConstraints).toMatch(/array_agg\(attribute\.attname::text order by key_column\.ordinality\)/i);
+    expect(keyConstraints).not.toMatch(/constraint_state\.conname = required\.constraint_name/i);
   });
 
   it("audits RLS, exact FKs/checks/indexes/grants/RPC ACLs and the complete bucket", () => {

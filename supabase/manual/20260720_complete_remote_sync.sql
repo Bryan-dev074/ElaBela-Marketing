@@ -1776,7 +1776,6 @@ with
       select 1
       from pg_constraint constraint_state
       where constraint_state.conrelid = ('public.' || required.table_name)::regclass
-        and constraint_state.conname = required.constraint_name
         and constraint_state.contype = required.constraint_type::"char"
         and (
           select array_agg(attribute.attname::text order by key_column.ordinality)
