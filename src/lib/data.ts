@@ -359,14 +359,6 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     ],
   },
   {
-    id: "gems",
-    kind: "link",
-    title: "GEMS de Gemini",
-    emoji: "💎",
-    desc: "Enlaces a cada GEM",
-    items: [{ label: "GEM · Content Studio", note: "Estética de marca" }],
-  },
-  {
     id: "apps",
     kind: "link",
     title: "Apps",
@@ -383,7 +375,10 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     title: "IA",
     emoji: "🤖",
     desc: "Herramientas de IA del equipo",
-    items: [{ label: "Gemini", href: "https://gemini.google.com" }],
+    items: [
+      { label: "Gemini", href: "https://gemini.google.com" },
+      { label: "GEM · Content Studio", note: "Estética de marca" },
+    ],
   },
   {
     id: "ads",

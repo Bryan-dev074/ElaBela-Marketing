@@ -124,7 +124,7 @@ The default ordered categories are:
 5. Enlaces
 6. Redes Sociales
 
-The old `GEMS de Gemini` category migrates to `Enlaces`. The old
+The old `GEMS de Gemini` category migrates to `IA`. The old
 `Enlaces Oficiales` category migrates to `Redes Sociales`.
 
 ### Category model

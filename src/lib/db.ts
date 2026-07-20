@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type SetStateAction, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DAILY_TASKS, PROJECTS, GUIONES, CLIENTS, PRODUCTS, POST_TYPES, STORY_CONFIG, TOOL_CATEGORIES,
@@ -53,6 +53,16 @@ export function publicationToRow(p: Publication): Record<string, unknown> {
   };
 }
 
+export function postTypeToRow(post: PostType | Publication): Record<string, unknown> {
+  const publication = post as Partial<Publication>;
+  return publicationToRow({
+    ...post,
+    exampleImages: publication.exampleImages ?? (post.exampleImage ? [post.exampleImage] : []),
+    guide: publication.guide ?? "",
+    toolIds: publication.toolIds ?? [],
+  });
+}
+
 /**
  * Loads a collection from Supabase; if the table errors (not migrated) or is empty,
  * falls back to the local seed so the UI never breaks. Writes go through to Supabase
@@ -72,6 +82,25 @@ export function useCollection<T extends object>(cfg: {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const live = useRef(true);
+  const itemsRef = useRef<T[]>(cfg.seed);
+  const mutationVersions = useRef(new Map<unknown, number>());
+
+  const setCurrentItems = (next: T[] | ((current: T[]) => T[])) => {
+    const resolved = typeof next === "function" ? (next as (current: T[]) => T[])(itemsRef.current) : next;
+    itemsRef.current = resolved;
+    setItems(resolved);
+  };
+  const startMutation = (id: unknown) => {
+    const version = (mutationVersions.current.get(id) ?? 0) + 1;
+    mutationVersions.current.set(id, version);
+    return version;
+  };
+  const isLatestMutation = (id: unknown, version: number) => mutationVersions.current.get(id) === version;
+  const setCollectionItems = (next: SetStateAction<T[]>) => {
+    setCurrentItems((current) => typeof next === "function"
+      ? (next as (previous: T[]) => T[])(current)
+      : next);
+  };
 
   useEffect(() => {
     live.current = true;
@@ -81,7 +110,7 @@ export function useCollection<T extends object>(cfg: {
       const { data, error } = await q;
       if (!live.current) return;
       if (!error && data && data.length) {
-        setItems(data.map(cfg.fromRow));
+        setCurrentItems(data.map(cfg.fromRow));
       } else if (!error && data && cfg.seed.length) {
         // Table reachable but empty: bootstrap it with the seed so that later
         // update/remove calls hit real rows and survive a reload.
@@ -95,50 +124,66 @@ export function useCollection<T extends object>(cfg: {
 
   const clearError = () => setError(null);
   const addAsync = async (item: T): Promise<CollectionMutationResult> => {
-    const previous = items;
-    setItems([item, ...previous]);
+    const id = idOf(item);
+    const version = startMutation(id);
+    setCurrentItems((previous) => [item, ...previous]);
     const { error: mutationError } = await supabase.from(cfg.table).insert(cfg.toRow(item));
     if (mutationError) {
-      setItems(previous);
+      if (isLatestMutation(id, version)) setCurrentItems((current) => current.filter((currentItem) => idOf(currentItem) !== id));
       setError(mutationError.message);
       return { ok: false, error: mutationError.message };
     }
     return { ok: true };
   };
   const upsertAsync = async (item: T): Promise<CollectionMutationResult> => {
-    const previous = items;
+    const id = idOf(item);
+    const version = startMutation(id);
+    const previous = itemsRef.current;
+    const previousItem = previous.find((currentItem) => idOf(currentItem) === id);
     const next = previous.some((i) => idOf(i) === idOf(item))
       ? previous.map((i) => (idOf(i) === idOf(item) ? item : i))
       : [item, ...previous];
-    setItems(next);
+    setCurrentItems(next);
     const { error: mutationError } = await supabase.from(cfg.table).upsert(cfg.toRow(item));
     if (mutationError) {
-      setItems(previous);
+      if (isLatestMutation(id, version)) {
+        setCurrentItems((current) => previousItem
+          ? current.map((currentItem) => (idOf(currentItem) === id ? previousItem : currentItem))
+          : current.filter((currentItem) => idOf(currentItem) !== id));
+      }
       setError(mutationError.message);
       return { ok: false, error: mutationError.message };
     }
     return { ok: true };
   };
   const updateAsync = async (id: unknown, patch: Partial<T>): Promise<CollectionMutationResult> => {
-    const previous = items;
+    const previous = itemsRef.current;
     const row = previous.find((item) => idOf(item) === id);
     if (!row) return { ok: true };
+    const version = startMutation(id);
     const updated = { ...row, ...patch };
-    setItems(previous.map((item) => (idOf(item) === id ? updated : item)));
+    setCurrentItems(previous.map((item) => (idOf(item) === id ? updated : item)));
     const { error: mutationError } = await supabase.from(cfg.table).upsert(cfg.toRow(updated));
     if (mutationError) {
-      setItems(previous);
+      if (isLatestMutation(id, version)) setCurrentItems((current) => current.map((item) => (idOf(item) === id ? row : item)));
       setError(mutationError.message);
       return { ok: false, error: mutationError.message };
     }
     return { ok: true };
   };
   const removeAsync = async (id: unknown): Promise<CollectionMutationResult> => {
-    const previous = items;
-    setItems(previous.filter((item) => idOf(item) !== id));
+    const previous = itemsRef.current;
+    const removed = previous.find((item) => idOf(item) === id);
+    const previousIndex = previous.findIndex((item) => idOf(item) === id);
+    const version = startMutation(id);
+    setCurrentItems(previous.filter((item) => idOf(item) !== id));
     const { error: mutationError } = await supabase.from(cfg.table).delete().eq(idKey, id as string);
     if (mutationError) {
-      setItems(previous);
+      if (removed && isLatestMutation(id, version)) {
+        setCurrentItems((current) => current.some((item) => idOf(item) === id)
+          ? current
+          : [...current.slice(0, previousIndex), removed, ...current.slice(previousIndex)]);
+      }
       setError(mutationError.message);
       return { ok: false, error: mutationError.message };
     }
@@ -150,7 +195,7 @@ export function useCollection<T extends object>(cfg: {
   const update = (id: unknown, patch: Partial<T>) => { void updateAsync(id, patch); };
   const remove = (id: unknown) => { void removeAsync(id); };
 
-  return { items, setItems, add, upsert, update, remove, addAsync, upsertAsync, updateAsync, removeAsync, error, clearError, ready };
+  return { items, setItems: setCollectionItems, add, upsert, update, remove, addAsync, upsertAsync, updateAsync, removeAsync, error, clearError, ready };
 }
 
 /* ---------------- Entity hooks ---------------- */
@@ -216,12 +261,7 @@ export const usePostTypes = () =>
     seed: POST_TYPES,
     order: { col: "sort" },
     fromRow: publicationFromRow,
-    toRow: (post) => publicationToRow({
-      ...post,
-      exampleImages: post.exampleImage ? [post.exampleImage] : [],
-      guide: "",
-      toolIds: [],
-    }),
+    toRow: postTypeToRow,
   });
 
 export const useStoryConfig = () =>

@@ -28,7 +28,7 @@ on conflict (id) do nothing;
 alter table public.tool_items add column if not exists category_id text references public.tool_categories(id);
 update public.tool_items
 set category_id = case category
-  when 'gems' then 'enlaces'
+  when 'gems' then 'ia'
   when 'links' then 'redes-sociales'
   when 'prompts' then 'prompts'
   when 'ia' then 'ia'
@@ -78,7 +78,7 @@ values (
   'elabela-assets', 'elabela-assets', true, 8388608,
   array[
     'image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/svg+xml', 'image/webp',
-    'application/font-woff', 'application/font-woff2', 'application/vnd.ms-fontobject',
+    'application/font-woff', 'application/font-woff2',
     'font/otf', 'font/ttf', 'font/woff', 'font/woff2'
   ]
 )

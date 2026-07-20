@@ -1,4 +1,4 @@
-import { publicationFromRow, publicationToRow } from "@/lib/db";
+import { postTypeToRow, publicationFromRow, publicationToRow } from "@/lib/db";
 
 describe("publicationFromRow", () => {
   it("falls back to the legacy example image when no image array exists", () => {
@@ -22,6 +22,25 @@ describe("publicationFromRow", () => {
       guide: "# Guía",
       toolIds: ["tool-1"],
     })).toMatchObject({
+      example_image: "first.jpg",
+      example_images: ["first.jpg", "second.jpg"],
+      guide: "# Guía",
+      tool_ids: ["tool-1"],
+    });
+  });
+
+  it("keeps mapped gallery, guide, and tools when an existing post is written", () => {
+    expect(postTypeToRow(publicationFromRow({
+      id: "post-1",
+      name: "Post",
+      icon: "✨",
+      descr: "Descripción",
+      accent: "#d6ab99",
+      example_image: "legacy.jpg",
+      example_images: ["first.jpg", "second.jpg"],
+      guide: "# Guía",
+      tool_ids: ["tool-1"],
+    }))).toMatchObject({
       example_image: "first.jpg",
       example_images: ["first.jpg", "second.jpg"],
       guide: "# Guía",

@@ -33,6 +33,21 @@ describe("validateAssetFile", () => {
 
     expect(validateAssetFile(font, { kind: "font", maxBytes: 5 * 1024 * 1024 })).toEqual({ ok: true });
   });
+
+  it("accepts an allowed font extension when browsers omit its MIME type", () => {
+    const font = new File(["font"], "marca.woff2", { type: "" });
+
+    expect(validateAssetFile(font, { kind: "font", maxBytes: 5 * 1024 * 1024 })).toEqual({ ok: true });
+  });
+
+  it("rejects a font MIME type paired with a disallowed extension", () => {
+    const font = new File(["font"], "marca.eot", { type: "font/woff2" });
+
+    expect(validateAssetFile(font, { kind: "font", maxBytes: 5 * 1024 * 1024 })).toEqual({
+      ok: false,
+      error: "marca.eot no es un archivo de fuente compatible.",
+    });
+  });
 });
 
 describe("removeAssetByPublicUrl", () => {
@@ -43,6 +58,17 @@ describe("removeAssetByPublicUrl", () => {
   it("refuses a lookalike URL from another origin", async () => {
     await expect(removeAssetByPublicUrl(
       "https://evil.example/storage/v1/object/public/elabela-assets/private.png",
+    )).resolves.toEqual({
+      ok: false,
+      error: "La URL del recurso no pertenece al almacenamiento de ElaBela.",
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("refuses a same-origin URL whose bucket prefix is not at the pathname start", async () => {
+    await expect(removeAssetByPublicUrl(
+      "https://example.supabase.co/prefix/storage/v1/object/public/elabela-assets/private.png",
     )).resolves.toEqual({
       ok: false,
       error: "La URL del recurso no pertenece al almacenamiento de ElaBela.",

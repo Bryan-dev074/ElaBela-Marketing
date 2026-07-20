@@ -256,7 +256,7 @@ git push
 expect(DEFAULT_TOOL_CATEGORIES.map((c) => c.name)).toEqual([
   "Prompts", "IA", "Apps", "Ads", "Enlaces", "Redes Sociales",
 ]);
-expect(normalizeLegacyCategory("gems")).toBe("enlaces");
+expect(normalizeLegacyCategory("gems")).toBe("ia");
 expect(normalizeLegacyCategory("links")).toBe("redes-sociales");
 expect(canDeleteCategory("prompts", [{ categoryId: "prompts" }])).toEqual({
   ok: false,
