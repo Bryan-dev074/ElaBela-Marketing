@@ -135,17 +135,31 @@ export const STORY_CONFIG: StoryPlatform[] = [
   { platform: "TikTok", icon: "🎵", min: 1, max: 2, schedules: ["17:00"], done: 0, assignee: "cielo" },
 ];
 
+export type ProjectType =
+  | "campaign" | "launch" | "content" | "brand-design"
+  | "web-ecommerce" | "event" | "crm" | "operations" | "other";
+
+export type ProjectPriority = "low" | "normal" | "high" | "urgent";
+
 export interface Project {
   id: string;
   name: string;
   owner: string;
+  responsibleUsernames: string[];
+  projectType: ProjectType;
+  priority: ProjectPriority;
+  objective?: string;
   status: "todo" | "doing" | "done";
-  createdAt: string;          // fecha de creación
-  due?: string;               // fecha de entrega (opcional)
+  createdAt: string;
+  startDate?: string;
+  due?: string;
   archived?: boolean;
+  completedAt?: string;
+  completedBy?: string;
+  completedResponsibleUsernames?: string[];
   contentMode: "steps" | "note";
   steps: ProjectStep[];
-  note?: string;              // markdown (cuando contentMode = "note")
+  note?: string;
 }
 
 export const PROJECTS: Project[] = [
@@ -153,6 +167,9 @@ export const PROJECTS: Project[] = [
     id: "pr1",
     name: "Relanzamiento línea Glow",
     owner: "cielo",
+    responsibleUsernames: [],
+    projectType: "other",
+    priority: "normal",
     status: "doing",
     createdAt: "2026-07-08",
     due: "2026-07-28",
@@ -168,6 +185,9 @@ export const PROJECTS: Project[] = [
     id: "pr2",
     name: "Campaña Día del Amigo",
     owner: "elizabeth",
+    responsibleUsernames: [],
+    projectType: "other",
+    priority: "normal",
     status: "todo",
     createdAt: "2026-07-13",
     due: "2026-07-30",
@@ -179,6 +199,9 @@ export const PROJECTS: Project[] = [
     id: "pr3",
     name: "Renovación de Banners WEB",
     owner: "cielo",
+    responsibleUsernames: [],
+    projectType: "other",
+    priority: "normal",
     status: "done",
     createdAt: "2026-07-01",
     due: "2026-07-10",
