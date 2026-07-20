@@ -127,7 +127,7 @@ export function OwnerPicker({
 /** Overlapping stack of avatars (rotations, teams). */
 export function AvatarStack({ usernames, size = 20 }: { usernames: string[]; size?: number }) {
   return (
-    <span className="inline-flex items-center">
+    <span className="inline-flex items-center" role="img" aria-label={`Responsables: ${usernames.join(", ")}`}>
       {usernames.map((u, i) => (
         <span key={u + i} style={{ marginLeft: i === 0 ? 0 : -size * 0.35, zIndex: usernames.length - i }} className="relative inline-flex rounded-full border border-black/60">
           <Avatar username={u} size={size} />
