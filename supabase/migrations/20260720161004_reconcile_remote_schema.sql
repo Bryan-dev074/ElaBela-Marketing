@@ -200,7 +200,11 @@ begin
          and i.indpred is null
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.tool_categories_name_ci_unique');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.tool_categories_name_ci_unique')
+    and i.indrelid = 'public.tool_categories'::regclass;
   if to_regclass('public.tool_categories_name_ci_unique') is not null
      and index_matches is distinct from true then
     raise exception 'El índice tool_categories_name_ci_unique existe con otra definición.';
@@ -596,7 +600,11 @@ begin
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'scope=''shared'''
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.credential_categories_shared_name_ci_unique');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.credential_categories_shared_name_ci_unique')
+    and i.indrelid = 'public.credential_categories'::regclass;
   if to_regclass('public.credential_categories_shared_name_ci_unique') is not null
      and index_matches is distinct from true then
     raise exception 'El índice credential_categories_shared_name_ci_unique existe con otra definición.';
@@ -625,7 +633,11 @@ begin
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'scope=''private'''
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.credential_categories_private_name_ci_unique');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.credential_categories_private_name_ci_unique')
+    and i.indrelid = 'public.credential_categories'::regclass;
   if to_regclass('public.credential_categories_private_name_ci_unique') is not null
      and index_matches is distinct from true then
     raise exception 'El índice credential_categories_private_name_ci_unique existe con otra definición.';
@@ -1158,7 +1170,11 @@ begin
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'status=''done'''
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.projects_completed_at_idx');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.projects_completed_at_idx')
+    and i.indrelid = 'public.projects'::regclass;
   if to_regclass('public.projects_completed_at_idx') is not null
      and index_matches is distinct from true then
     raise exception 'El índice projects_completed_at_idx existe con otra definición.';
@@ -1206,6 +1222,9 @@ begin
            end
     into index_matches
     from pg_index index_state
+    join pg_class index_relation on index_relation.oid = index_state.indexrelid
+    join pg_am access_method
+      on access_method.oid = index_relation.relam and access_method.amname = 'btree'
     where index_state.indexrelid = to_regclass('public.' || required.index_name);
 
     if to_regclass('public.' || required.index_name) is not null

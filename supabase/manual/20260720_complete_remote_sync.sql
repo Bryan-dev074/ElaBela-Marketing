@@ -1,6 +1,6 @@
 -- ElaBela: reconciliación completa de un remoto parcialmente actualizado.
 -- En Supabase Dashboard > SQL Editor, pegá y ejecutá este archivo completo una sola vez.
--- Es seguro volver a ejecutarlo; los avisos indican datos heredados que se preservaron.
+-- Es seguro volver a ejecutarlo; las incompatibilidades abortan la transacción sin borrar datos.
 
 begin;
 
@@ -205,7 +205,11 @@ begin
          and i.indpred is null
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.tool_categories_name_ci_unique');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.tool_categories_name_ci_unique')
+    and i.indrelid = 'public.tool_categories'::regclass;
   if to_regclass('public.tool_categories_name_ci_unique') is not null
      and index_matches is distinct from true then
     raise exception 'El índice tool_categories_name_ci_unique existe con otra definición.';
@@ -601,7 +605,11 @@ begin
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'scope=''shared'''
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.credential_categories_shared_name_ci_unique');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.credential_categories_shared_name_ci_unique')
+    and i.indrelid = 'public.credential_categories'::regclass;
   if to_regclass('public.credential_categories_shared_name_ci_unique') is not null
      and index_matches is distinct from true then
     raise exception 'El índice credential_categories_shared_name_ci_unique existe con otra definición.';
@@ -630,7 +638,11 @@ begin
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'scope=''private'''
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.credential_categories_private_name_ci_unique');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.credential_categories_private_name_ci_unique')
+    and i.indrelid = 'public.credential_categories'::regclass;
   if to_regclass('public.credential_categories_private_name_ci_unique') is not null
      and index_matches is distinct from true then
     raise exception 'El índice credential_categories_private_name_ci_unique existe con otra definición.';
@@ -1163,7 +1175,11 @@ begin
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'status=''done'''
   into index_matches
   from pg_index i
-  where i.indexrelid = to_regclass('public.projects_completed_at_idx');
+  join pg_class index_relation on index_relation.oid = i.indexrelid
+  join pg_am access_method
+    on access_method.oid = index_relation.relam and access_method.amname = 'btree'
+  where i.indexrelid = to_regclass('public.projects_completed_at_idx')
+    and i.indrelid = 'public.projects'::regclass;
   if to_regclass('public.projects_completed_at_idx') is not null
      and index_matches is distinct from true then
     raise exception 'El índice projects_completed_at_idx existe con otra definición.';
@@ -1211,6 +1227,9 @@ begin
            end
     into index_matches
     from pg_index index_state
+    join pg_class index_relation on index_relation.oid = index_state.indexrelid
+    join pg_am access_method
+      on access_method.oid = index_relation.relam and access_method.amname = 'btree'
     where index_state.indexrelid = to_regclass('public.' || required.index_name);
 
     if to_regclass('public.' || required.index_name) is not null
@@ -1595,6 +1614,7 @@ with
   ),
   required_rls_tables(schema_name, table_name) as (
     values
+      ('public', 'projects'),
       ('public', 'credentials'),
       ('public', 'tool_categories'),
       ('public', 'credential_categories'),
@@ -1641,17 +1661,17 @@ with
       coalesce(policy.polroles = array[authenticated_role.oid]::oid[], false) as roles_match,
       replace(
         regexp_replace(
-          lower(coalesce(pg_get_expr(policy.polqual, policy.polrelid), 'none')),
-          '[[:space:]]+|::text|\(|\)', '', 'g'
+          coalesce(pg_get_expr(policy.polqual, policy.polrelid), 'none'),
+          '[[:space:]]+', '', 'g'
         ),
-        'selectauth.uidasuid', 'auth.uid'
+        '(SELECTauth.uid()ASuid)', 'auth.uid()'
       ) as using_expression,
       replace(
         regexp_replace(
-          lower(coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), 'none')),
-          '[[:space:]]+|::text|\(|\)', '', 'g'
+          coalesce(pg_get_expr(policy.polwithcheck, policy.polrelid), 'none'),
+          '[[:space:]]+', '', 'g'
         ),
-        'selectauth.uidasuid', 'auth.uid'
+        '(SELECTauth.uid()ASuid)', 'auth.uid()'
       ) as check_expression
     from required_policies required
     join pg_roles authenticated_role on authenticated_role.rolname = 'authenticated'
@@ -1669,20 +1689,20 @@ with
       and policy_state.using_expression = case policy_state.using_key
         when 'none' then 'none'
         when 'true' then 'true'
-        when 'category_visible' then 'scope=''shared''orowner_id=auth.uid'
-        when 'category_valid' then 'scope=''shared''andowner_idisnullorscope=''private''andowner_id=auth.uid'
-        when 'credential_visible' then 'scope=''shared''orowner_id=auth.uidorowner_idisnull'
-        when 'log_write' then 'state=''done''andcompleted_by=auth.uidandcompleted_atisnotnullorstate<>''done''andcompleted_byisnullandcompleted_atisnull'
-        when 'bucket' then 'bucket_id=''elabela-assets'''
+        when 'category_visible' then '((scope=''shared''::text)OR(owner_id=auth.uid()))'
+        when 'category_valid' then '(((scope=''shared''::text)AND(owner_idISNULL))OR((scope=''private''::text)AND(owner_id=auth.uid())))'
+        when 'credential_visible' then '((scope=''shared''::text)OR(owner_id=auth.uid())OR(owner_idISNULL))'
+        when 'log_write' then '(((state=''done''::text)AND(completed_by=auth.uid())AND(completed_atISNOTNULL))OR((state<>''done''::text)AND(completed_byISNULL)AND(completed_atISNULL)))'
+        when 'bucket' then '(bucket_id=''elabela-assets''::text)'
       end
       and policy_state.check_expression = case policy_state.check_key
         when 'none' then 'none'
         when 'true' then 'true'
-        when 'category_visible' then 'scope=''shared''orowner_id=auth.uid'
-        when 'category_valid' then 'scope=''shared''andowner_idisnullorscope=''private''andowner_id=auth.uid'
-        when 'credential_visible' then 'scope=''shared''orowner_id=auth.uidorowner_idisnull'
-        when 'log_write' then 'state=''done''andcompleted_by=auth.uidandcompleted_atisnotnullorstate<>''done''andcompleted_byisnullandcompleted_atisnull'
-        when 'bucket' then 'bucket_id=''elabela-assets'''
+        when 'category_visible' then '((scope=''shared''::text)OR(owner_id=auth.uid()))'
+        when 'category_valid' then '(((scope=''shared''::text)AND(owner_idISNULL))OR((scope=''private''::text)AND(owner_id=auth.uid())))'
+        when 'credential_visible' then '((scope=''shared''::text)OR(owner_id=auth.uid())OR(owner_idISNULL))'
+        when 'log_write' then '(((state=''done''::text)AND(completed_by=auth.uid())AND(completed_atISNOTNULL))OR((state<>''done''::text)AND(completed_byISNULL)AND(completed_atISNULL)))'
+        when 'bucket' then '(bucket_id=''elabela-assets''::text)'
       end
     ), false) as ok
     from policy_state
@@ -1783,6 +1803,7 @@ with
       required.*,
       index_catalog.indexrelid is not null as index_exists,
       coalesce(index_catalog.indrelid = ('public.' || required.table_name)::regclass, false) as table_matches,
+      coalesce(access_method.oid is not null, false) as method_matches,
       coalesce(index_catalog.indisunique = required.expected_unique, false) as uniqueness_matches,
       coalesce(index_catalog.indisvalid and index_catalog.indisready, false) as usable,
       coalesce(index_catalog.indnkeyatts = required.expected_key_count and index_catalog.indnatts = required.expected_key_count, false) as key_count_matches,
@@ -1805,10 +1826,12 @@ with
     left join pg_class index_relation
       on index_relation.relnamespace = index_namespace.oid and index_relation.relname = required.index_name
     left join pg_index index_catalog on index_catalog.indexrelid = index_relation.oid
+    left join pg_am access_method
+      on access_method.oid = index_relation.relam and access_method.amname = 'btree'
   ),
   indexes_ok as (
     select coalesce(bool_and(
-      index_state.index_exists and index_state.table_matches
+      index_state.index_exists and index_state.table_matches and index_state.method_matches
       and index_state.uniqueness_matches and index_state.usable and index_state.key_count_matches
       and index_state.actual_first_expression = index_state.first_expression
       and index_state.actual_second_expression = index_state.second_expression

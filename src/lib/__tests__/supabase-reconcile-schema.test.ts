@@ -13,6 +13,7 @@ const migration = migrationNames.length === 1
 const manualPath = path.join(root, "supabase", "manual", "20260720_complete_remote_sync.sql");
 const manual = fs.existsSync(manualPath) ? fs.readFileSync(manualPath, "utf8") : "";
 const schema = fs.readFileSync(path.join(root, "supabase", "schema.sql"), "utf8");
+const report = fs.readFileSync(path.join(root, ".superpowers", "sdd", "supabase-reconcile-report.md"), "utf8");
 
 const scripts = [
   ["forward migration", migration],
@@ -39,6 +40,12 @@ function cteValuesBlock(sql: string, cteName: string) {
   const end = sql.indexOf("\n  ),", valuesStart);
   expect(end, `unterminated ${cteName}`).toBeGreaterThan(valuesStart);
   return sql.slice(valuesStart + "values".length, end);
+}
+
+function normalizePolicyExpression(expression: string) {
+  return expression
+    .replace(/\s+/g, "")
+    .replaceAll("(SELECTauth.uid()ASuid)", "auth.uid()");
 }
 
 const requiredColumnAudit = [
@@ -372,16 +379,18 @@ describe.each(scripts)("reconciliation contract in %s", (_label, sql) => {
         expect(block).toContain(`raise exception 'La restricción ${constraint} existe con otra definición`);
       }
     }
-    for (const [tag, index] of [
-      ["tool_unique", "tool_categories_name_ci_unique"],
-      ["credential_shared_unique", "credential_categories_shared_name_ci_unique"],
-      ["credential_private_unique", "credential_categories_private_name_ci_unique"],
-      ["projects_completed_at_index", "projects_completed_at_idx"],
+    for (const [tag, index, table] of [
+      ["tool_unique", "tool_categories_name_ci_unique", "tool_categories"],
+      ["credential_shared_unique", "credential_categories_shared_name_ci_unique", "credential_categories"],
+      ["credential_private_unique", "credential_categories_private_name_ci_unique", "credential_categories"],
+      ["projects_completed_at_index", "projects_completed_at_idx", "projects"],
     ]) {
       const block = sql.match(new RegExp(`do \\$${tag}\\$[\\s\\S]*?\\$${tag}\\$;`, "i"))?.[0] ?? "";
       expect(block).toContain(index);
       expect(block).toMatch(/pg_index/i);
       expect(block).toMatch(/pg_get_indexdef|pg_get_expr/i);
+      expect(block).toMatch(new RegExp(`indrelid = 'public\\.${table}'::regclass`, "i"));
+      expect(block).toMatch(/pg_am[\s\S]*amname = 'btree'|amname = 'btree'[\s\S]*pg_am/i);
       expect(block).toMatch(/raise exception 'El índice [^']+ existe con otra definición/i);
     }
     const simpleIndexes = sql.match(/do \$simple_index_integrity\$[\s\S]*?\$simple_index_integrity\$;/i)?.[0] ?? "";
@@ -395,6 +404,8 @@ describe.each(scripts)("reconciliation contract in %s", (_label, sql) => {
     expect(simpleIndexes).toMatch(/pg_index/i);
     expect(simpleIndexes).toMatch(/pg_get_indexdef/i);
     expect(simpleIndexes).toMatch(/pg_get_expr/i);
+    expect(simpleIndexes).toMatch(/index_state\.indrelid = to_regclass\(required\.table_name\)/i);
+    expect(simpleIndexes).toMatch(/pg_am[\s\S]*amname = 'btree'|amname = 'btree'[\s\S]*pg_am/i);
     expect(simpleIndexes).toMatch(/raise exception 'El índice % existe con otra definición\.'/i);
     expect(sql).not.toMatch(/raise notice 'No se (?:agregó|creó) (?:tool_categories|credential_categories)/i);
   });
@@ -434,9 +445,27 @@ describe("manual reconciliation safety and verification", () => {
     expect(verification).toMatch(/policy\.polroles = array\[authenticated_role\.oid\]::oid\[\]/i);
     expect(verification).toMatch(/pg_get_expr\(policy\.polqual, policy\.polrelid\)/i);
     expect(verification).toMatch(/pg_get_expr\(policy\.polwithcheck, policy\.polrelid\)/i);
+    const policyState = verification.match(/policy_state as \([\s\S]*?\n  \),/i)?.[0] ?? "";
+    expect(policyState).toContain("'[[:space:]]+', '', 'g'");
+    expect(policyState).toContain("'(SELECTauth.uid()ASuid)', 'auth.uid()'");
+    expect(policyState).not.toMatch(/lower\(coalesce\(pg_get_expr/i);
+    expect(policyState).not.toMatch(/::text\|\\\(|\\\)/i);
+    expect(policyState).not.toMatch(/replace\([^\n]+, '\(', ''\)|replace\([^\n]+, '\)', ''\)/i);
+    expect(verification).toContain("'((scope=''shared''::text)OR(owner_id=auth.uid()))'");
+    expect(verification).toContain("'(((scope=''shared''::text)AND(owner_idISNULL))OR((scope=''private''::text)AND(owner_id=auth.uid())))'");
+    expect(verification).toContain("'((scope=''shared''::text)OR(owner_id=auth.uid())OR(owner_idISNULL))'");
+    expect(verification).toContain("'(((state=''done''::text)AND(completed_by=auth.uid())AND(completed_atISNOTNULL))OR((state<>''done''::text)AND(completed_byISNULL)AND(completed_atISNULL)))'");
+    expect(verification).toContain("'(bucket_id=''elabela-assets''::text)'");
     for (const key of ["true", "category_visible", "category_valid", "credential_visible", "log_write", "bucket", "none"]) {
       expect(verification).toContain(`'${key}'`);
     }
+  });
+
+  it("preserves boolean grouping when normalizing policy expressions", () => {
+    const leftGrouped = normalizePolicyExpression("((scope = 'shared'::text OR owner_id = auth.uid()) AND owner_id IS NOT NULL)");
+    const rightGrouped = normalizePolicyExpression("(scope = 'shared'::text OR (owner_id = auth.uid() AND owner_id IS NOT NULL))");
+    expect(leftGrouped.replace(/[()]/g, "")).toBe(rightGrouped.replace(/[()]/g, ""));
+    expect(leftGrouped).not.toBe(rightGrouped);
   });
 
   it("audits RLS, exact FKs/checks/indexes/grants/RPC ACLs and the complete bucket", () => {
@@ -444,7 +473,7 @@ describe("manual reconciliation safety and verification", () => {
     const rlsRows = [...cteValuesBlock(verification, "required_rls_tables")
       .matchAll(/\('([^']+)', '([^']+)'\)/g)].map((match) => match.slice(1, 3));
     expect(rlsRows).toEqual([
-      ["public", "credentials"], ["public", "tool_categories"],
+      ["public", "projects"], ["public", "credentials"], ["public", "tool_categories"],
       ["public", "credential_categories"], ["public", "daily_task_logs"],
     ]);
     const foreignKeyRows = [...cteValuesBlock(verification, "required_foreign_keys")
@@ -503,17 +532,26 @@ describe("manual reconciliation safety and verification", () => {
       "public.delete_empty_credential_category(text)",
       "public.reorder_credential_categories(text,text[])",
     ]);
-    expect(verification).toMatch(/required_rls_tables[\s\S]*'credentials'[\s\S]*'tool_categories'[\s\S]*'credential_categories'[\s\S]*'daily_task_logs'/i);
+    expect(verification).toMatch(/required_rls_tables[\s\S]*'projects'[\s\S]*'credentials'[\s\S]*'tool_categories'[\s\S]*'credential_categories'[\s\S]*'daily_task_logs'/i);
     expect(verification).toMatch(/required_foreign_keys[\s\S]*'tool_items_category_id_fkey'[\s\S]*'credentials_category_id_fkey'[\s\S]*'daily_task_logs_completed_by_fkey'[\s\S]*'projects_completed_by_fkey'/i);
     expect(verification).toMatch(/foreign_key\.confdeltype = required\.delete_action/i);
     expect(verification).toMatch(/required_checks[\s\S]*projects_project_type_check[\s\S]*projects_priority_check/i);
     expect(verification).toMatch(/required_indexes[\s\S]*projects_completed_at_idx/i);
     expect(verification).toMatch(/index_state\.is_desc[\s\S]*index_state\.predicate_key/i);
+    expect(verification).toMatch(/pg_am[\s\S]*access_method\.amname = 'btree'/i);
+    expect(verification).toMatch(/index_state\.method_matches/i);
     expect(verification).toMatch(/required_table_grants[\s\S]*has_table_privilege\('authenticated'/i);
     expect(verification).toMatch(/required_rpcs[\s\S]*prosecdef = false[\s\S]*has_function_privilege\('authenticated'/i);
     expect(verification).toMatch(/aclexplode\(coalesce\(procedure\.proacl, acldefault\('f', procedure\.proowner\)\)\)[\s\S]*grantee = 0/i);
     expect(verification).toMatch(/allowed_mime_types = array\[[\s\S]*'font\/woff2'[\s\S]*\]::text\[\]/i);
     expect(verification).toMatch(/columns_ok[\s\S]*policies_ok[\s\S]*foreign_keys_ok[\s\S]*checks_ok[\s\S]*indexes_ok[\s\S]*table_grants_ok[\s\S]*rpcs_ok[\s\S]*bucket_ok[\s\S]*as ok/i);
+  });
+
+  it("documents abort semantics and the actual five reconciled foreign keys", () => {
+    expect(manual).toMatch(/incompatibilidades abortan la transacción/i);
+    expect(manual).not.toMatch(/los avisos indican datos heredados/i);
+    expect(report).toMatch(/cinco FKs `NOT VALID`/i);
+    expect(report).not.toMatch(/cuatro FKs `NOT VALID`|producen `NOTICE` y omiten/i);
   });
 });
 

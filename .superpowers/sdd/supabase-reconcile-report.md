@@ -22,7 +22,7 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - `supabase/schema.sql`: paridad para checks exactos de proyectos, FKs explícitas, guardas de categorías y permisos RPC.
 - `src/lib/__tests__/supabase-reconcile-schema.test.ts`: contrato estático completo y prohibiciones destructivas.
 - `src/lib/__tests__/daily-task-schema.test.ts`: acepta la FK reconciliada fuera de la definición inline.
-- `src/lib/__tests__/credential-category-schema.test.ts`: acepta preservación con aviso en lugar de renombrar datos heredados.
+- `src/lib/__tests__/credential-category-schema.test.ts`: acepta el aborto explícito en lugar de renombrar datos heredados.
 
 ## Comandos y resultados
 
@@ -30,7 +30,7 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - `npx tsc --noEmit`: aprobado, sin salida.
 - `git diff --check`: aprobado; solo avisos informativos de conversión LF/CRLF en archivos existentes.
 - Comparación read-only de los marcadores de cuerpo: `BodiesIdentical = True`.
-- Auditoría read-only: cero `DROP TABLE`, `TRUNCATE` o conversiones de PK en migración/manual; cuatro FKs `NOT VALID`; cuatro revocaciones de `PUBLIC`; etiquetas dollar-quote balanceadas.
+- Auditoría read-only: cero `DROP TABLE`, `TRUNCATE` o conversiones de PK en migración/manual; cinco FKs `NOT VALID`; cuatro revocaciones de `PUBLIC`; etiquetas dollar-quote balanceadas.
 
 ## Auto-revisión y riesgos
 
@@ -38,7 +38,7 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - Seguridad: RLS y grants se aplican juntos; los cuatro RPC son `SECURITY INVOKER`, revocan `PUBLIC` y conceden solo a `authenticated`.
 - No destrucción: no hay bootstrap de tablas base, triggers de `auth.users`, cambio de PK, reset, seed general, borrado de tablas ni limpieza de filas de usuario.
 - Atomicidad: el manual envuelve mutaciones en `BEGIN/COMMIT`; la recarga de PostgREST ocurre después del commit.
-- Datos heredados: blancos/duplicados de categorías producen `NOTICE` y omiten la restricción o índice incompatible. Una FK o check con el nombre esperado pero definición distinta produce un error español explícito en vez de reemplazarse.
+- Datos heredados: blancos, duplicados u otras incompatibilidades abortan la transacción con un error español explícito; no se omiten restricciones o índices y no se renombran, fusionan ni borran filas.
 - Normalización autorizada: valores inválidos/nulos de tipo o prioridad de proyecto se convierten a `other`/`normal` antes de los checks exactos.
 - Verificación pendiente del usuario: por prohibición expresa no se levantó una base ni se ejecutó el SQL; la última consulta del script manual valida columnas/tablas críticas, RLS, policies, bucket y privilegios sin leer secretos ni filas de usuario.
 
@@ -58,3 +58,13 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - `npx tsc --noEmit`: aprobado sin salida.
 - `git diff --check`: aprobado.
 - No hay `psql`, `postgres`, `pg_isready`, Docker, Supabase CLI local ni parser SQL instalado en el workspace; por ello no se pudo hacer parse/ejecución PostgreSQL local sin instalar dependencias o tocar un proyecto remoto. No se usó ningún recurso remoto.
+
+## Correcciones del re-review final
+
+- RED específico: el contrato principal produjo 5 fallos sobre agrupación de policies, RLS de `projects`, identidad/método de índices y documentación obsoleta.
+- La auditoría de policies ya no elimina paréntesis ni casts y tampoco convierte toda la expresión a minúsculas. Solo elimina whitespace y reemplaza la forma exacta del subquery escalar `(SELECT auth.uid() AS uid)` por el átomo equivalente `auth.uid()`; las expresiones esperadas conservan la estructura booleana emitida por `pg_get_expr`.
+- La prueba de regresión demuestra que dos expresiones con los mismos tokens pero agrupación distinta permanecen diferentes después de normalizar.
+- `projects` forma parte del contrato RLS exacto junto con `credentials`, `tool_categories`, `credential_categories` y `daily_task_logs`.
+- Los tres índices únicos de categorías y `projects_completed_at_idx` comprueban además `pg_index.indrelid` contra la tabla exacta. Esos cuatro índices, los seis índices simples y la verificación final exigen método `btree` mediante `pg_class.relam` y `pg_am`.
+- Se corrigieron el comentario del script manual y las secciones históricas del informe: las incompatibilidades abortan la transacción y la reconciliación contiene cinco FKs declaradas inicialmente como `NOT VALID` antes de validarlas.
+- Validación fresca: 4 archivos focales, 59/59 pruebas aprobadas; suite completa, 27 archivos y 247/247 pruebas aprobadas; `npx tsc --noEmit` aprobado.
