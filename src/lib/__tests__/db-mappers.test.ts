@@ -69,4 +69,20 @@ describe("publicationFromRow", () => {
     expect(item).toMatchObject({ category: "apps", categoryId: "apps" });
     expect(toolItemToRow(item)).toMatchObject({ category: "apps", category_id: "apps" });
   });
+
+  it("persists a current-page category edit over a stale migrated category ID", () => {
+    const loaded = toolItemFromRow({
+      id: "tool-1",
+      category: "ia",
+      category_id: "ia",
+      kind: "link",
+      title: "IA tool",
+    });
+    const editedThroughPage = { ...loaded, category: "apps" };
+
+    expect(toolItemToRow(editedThroughPage)).toMatchObject({
+      category: "apps",
+      category_id: "apps",
+    });
+  });
 });

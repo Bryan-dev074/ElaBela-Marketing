@@ -315,7 +315,7 @@ export function toolItemFromRow(r: Record<string, unknown>): ToolItem {
 }
 
 export function toolItemToRow(t: ToolItem): Record<string, unknown> {
-  const categoryId = t.categoryId ?? normalizedToolCategoryId(t.category);
+  const categoryId = t.category ? normalizedToolCategoryId(t.category) : t.categoryId ?? "";
   return {
     id: t.id,
     category: currentToolCategory(categoryId),
