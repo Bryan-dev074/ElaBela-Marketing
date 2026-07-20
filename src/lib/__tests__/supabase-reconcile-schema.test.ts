@@ -255,6 +255,10 @@ describe.each(scripts)("reconciliation contract in %s", (_label, sql) => {
     expect(priorityGuard).toMatch(/projects_priority_check/);
     expect(priorityGuard).toMatch(/pg_get_constraintdef/i);
     expect(sql).toMatch(/create index if not exists projects_completed_at_idx[\s\S]*where status = 'done'/i);
+    const completedIndexGuard = sql.match(/do \$projects_completed_at_index\$[\s\S]*?\$projects_completed_at_index\$;/i)?.[0] ?? "";
+    expect(completedIndexGuard).toMatch(/pg_get_indexdef\([^)]*,\s*1,\s*false\)[\s\S]*= 'completed_at'/i);
+    expect(completedIndexGuard).not.toContain("= 'completed_atdesc'");
+    expect(completedIndexGuard).toMatch(/indoption\[0\] = 3/i);
   });
 
   it("reconciles logs, RLS policies, the authoritative bucket and Data API grants", () => {
@@ -526,7 +530,7 @@ describe("manual reconciliation safety and verification", () => {
       ["projects", "projects_completed_by_idx"],
     ]);
     expect(cteValuesBlock(verification, "required_indexes")).toContain(
-      "('projects', 'projects_completed_at_idx', false, 1, 'completed_atdesc', 'none', true, true, 'status_done')",
+      "('projects', 'projects_completed_at_idx', false, 1, 'completed_at', 'none', true, true, 'status_done')",
     );
     const grantRows = [...cteValuesBlock(verification, "required_table_grants")
       .matchAll(/\('([^']+)'\)/g)].map((match) => match[1]);
@@ -549,6 +553,9 @@ describe("manual reconciliation safety and verification", () => {
     expect(verification).toMatch(/required_checks[\s\S]*projects_project_type_check[\s\S]*projects_priority_check/i);
     expect(verification).toMatch(/required_indexes[\s\S]*projects_completed_at_idx/i);
     expect(verification).toMatch(/index_state\.is_desc[\s\S]*index_state\.predicate_key/i);
+    expect(verification).toMatch(
+      /coalesce\(nullif\(pg_get_indexdef\(index_catalog\.indexrelid,\s*2,\s*false\),\s*''\),\s*'none'\)/i,
+    );
     expect(verification).toMatch(/pg_am[\s\S]*access_method\.amname = 'btree'/i);
     expect(verification).toMatch(/index_state\.method_matches/i);
     expect(verification).toMatch(/required_table_grants[\s\S]*has_table_privilege\('authenticated'/i);

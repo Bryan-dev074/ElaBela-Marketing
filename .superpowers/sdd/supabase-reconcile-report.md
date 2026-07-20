@@ -77,3 +77,10 @@ Se creó una migración forward-only y un script manual copy/paste con el mismo 
 - El error original se reprodujo en un PostgreSQL embebido temporal; el cast lo corrigió. La consulta completa de verificación también se parseó y ejecutó allí sin errores de sintaxis o resolución de tipos. El runtime temporal se eliminó después de la comprobación.
 - La auditoría posterior también cerró dos falsos positivos: las FKs y las PK/unique requeridas ahora verifican tanto su estructura como el nombre contractual exacto.
 - Validación final: 27 archivos y 248/248 pruebas aprobadas, `npx tsc --noEmit` sin errores, build de producción aprobado y dos revisiones independientes con veredicto `APPROVED`.
+
+## Corrección tras la segunda ejecución real en SQL Editor
+
+- La reejecución abortó antes del `COMMIT` porque el guard de `projects_completed_at_idx` esperaba que `pg_get_indexdef(index_oid, 1, false)` devolviera `completed_at DESC`; PostgreSQL devuelve solo `completed_at` y expone `DESC NULLS FIRST` por separado como `indoption[0] = 3`.
+- Se cambió primero el contrato en pruebas (tres fallos rojos esperados) y después se corrigieron el guard y la fila de verificación para comparar la expresión `completed_at` separada de sus bits de orden.
+- Una ejecución diagnóstica completa descubrió además que `pg_get_indexdef(..., 2, false)` devuelve cadena vacía para índices de una columna; se normaliza con `nullif(..., '')` antes de `coalesce(..., 'none')`.
+- Validación PostgreSQL de integración: el esquema canónico se aplicó dos veces sin errores; luego el script manual completo se ejecutó dos veces consecutivas y ambas terminaron con `ok = true`.

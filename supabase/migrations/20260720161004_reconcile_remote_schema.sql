@@ -1165,7 +1165,7 @@ declare
 begin
   select not i.indisunique and i.indisvalid and i.indisready
          and i.indnkeyatts = 1 and i.indnatts = 1
-         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'completed_atdesc'
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'completed_at'
          and i.indoption[0] = 3
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'status=''done'''
   into index_matches

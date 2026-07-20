@@ -1170,7 +1170,7 @@ declare
 begin
   select not i.indisunique and i.indisvalid and i.indisready
          and i.indnkeyatts = 1 and i.indnatts = 1
-         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'completed_atdesc'
+         and regexp_replace(lower(pg_get_indexdef(i.indexrelid, 1, false)), '\s+', '', 'g') = 'completed_at'
          and i.indoption[0] = 3
          and replace(replace(replace(regexp_replace(lower(pg_get_expr(i.indpred, i.indrelid)), '\s+', '', 'g'), '::text', ''), '(', ''), ')', '') = 'status=''done'''
   into index_matches
@@ -1792,7 +1792,7 @@ with
       ('tool_categories', 'tool_categories_name_ci_unique', true, 1, 'lower(btrim(name))', 'none', false, false, 'none'),
       ('credential_categories', 'credential_categories_shared_name_ci_unique', true, 1, 'lower(btrim(name))', 'none', false, false, 'scope_shared'),
       ('credential_categories', 'credential_categories_private_name_ci_unique', true, 2, 'owner_id', 'lower(btrim(name))', false, false, 'scope_private'),
-      ('projects', 'projects_completed_at_idx', false, 1, 'completed_atdesc', 'none', true, true, 'status_done'),
+      ('projects', 'projects_completed_at_idx', false, 1, 'completed_at', 'none', true, true, 'status_done'),
       ('tool_items', 'tool_items_category_id_idx', false, 1, 'category_id', 'none', false, false, 'none'),
       ('credentials', 'credentials_category_id_idx', false, 1, 'category_id', 'none', false, false, 'none'),
       ('daily_task_logs', 'daily_task_logs_activity_date_idx', false, 1, 'activity_date', 'none', false, false, 'none'),
@@ -1810,7 +1810,7 @@ with
       coalesce(index_catalog.indisvalid and index_catalog.indisready, false) as usable,
       coalesce(index_catalog.indnkeyatts = required.expected_key_count and index_catalog.indnatts = required.expected_key_count, false) as key_count_matches,
       regexp_replace(lower(coalesce(pg_get_indexdef(index_catalog.indexrelid, 1, false), 'none')), '[[:space:]]+', '', 'g') as actual_first_expression,
-      regexp_replace(lower(coalesce(pg_get_indexdef(index_catalog.indexrelid, 2, false), 'none')), '[[:space:]]+', '', 'g') as actual_second_expression,
+      regexp_replace(lower(coalesce(nullif(pg_get_indexdef(index_catalog.indexrelid, 2, false), ''), 'none')), '[[:space:]]+', '', 'g') as actual_second_expression,
       coalesce((index_catalog.indoption[0] & 1) = 1, false) as is_desc,
       coalesce((index_catalog.indoption[0] & 2) = 2, false) as nulls_first,
       case replace(replace(replace(
