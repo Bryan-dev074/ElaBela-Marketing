@@ -167,17 +167,40 @@ describe("ProjectCard", () => {
     expect(screen.getByRole("button", { name: "+2 pasos más" })).toBeInTheDocument();
   });
 
-  it("shows a clean plain-text preview for Markdown notes", () => {
+  it("shows a clean plain-text preview for supported GFM notes", () => {
     renderCard({
       value: project({
         contentMode: "note",
-        note: "## Objetivo\n\nReforzar **comunidad** y [ventas](https://example.com).\n\n- Reel principal",
+        note: [
+          "## Objetivo",
+          "",
+          "- [x] Reel listo",
+          "",
+          "| Canal | Estado |",
+          "| --- | --- |",
+          "| Instagram | Activo |",
+          "",
+          "```ts",
+          "const listo = true",
+          "```",
+          "",
+          "[Guía][docs] · [Landing](https://example.com/campana_(amigos))",
+          "",
+          "[docs]: https://example.com/guia",
+        ].join("\n"),
         steps: [],
       }),
     });
 
-    expect(screen.getByText("Objetivo Reforzar comunidad y ventas. Reel principal")).toBeInTheDocument();
-    expect(screen.queryByText(/##|\*\*|\]\(/)).not.toBeInTheDocument();
+    const preview = document.querySelector("[data-project-note-preview]");
+    expect(preview).toHaveTextContent("Objetivo Reel listo Canal Estado Instagram Activo const listo = true Guía · Landing");
+    expect(preview?.textContent).not.toMatch(/##|\[x\]|\|\s*---|```|\bts\b|\]\[|campana_\(amigos\)\)/);
+  });
+
+  it("uses the empty state when Markdown contains no readable content", () => {
+    renderCard({ value: project({ contentMode: "note", note: "***", steps: [] }) });
+
+    expect(screen.getByText("Sin contenido")).toBeInTheDocument();
   });
 
   it("shows completion audit and a 44-pixel reopen action", () => {

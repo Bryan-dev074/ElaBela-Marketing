@@ -168,8 +168,8 @@ export function ProjectCard({
             onOpen={onOpen}
           />
         ) : (
-          <p className="pointer-events-none line-clamp-4 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-3 text-xs leading-5 text-[var(--muted)]">
-            {project.note ? projectNotePreview(project.note) : "Sin contenido"}
+          <p data-project-note-preview="true" className="pointer-events-none line-clamp-4 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-3 text-xs leading-5 text-[var(--muted)]">
+            {projectNotePreview(project.note || "") || "Sin contenido"}
           </p>
         )}
       </div>

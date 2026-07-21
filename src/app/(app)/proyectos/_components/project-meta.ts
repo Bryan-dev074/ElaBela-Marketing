@@ -1,4 +1,14 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
 import type { ProjectPriority, ProjectType } from "@/lib/data";
+
+type MarkdownNode = {
+  type: string;
+  value?: unknown;
+  alt?: unknown;
+  children?: MarkdownNode[];
+};
 
 export const PROJECT_TYPES: Array<{ value: ProjectType; label: string }> = [
   { value: "campaign", label: "Campaña" },
@@ -33,13 +43,17 @@ export function formatProjectAuditDate(value?: string): string {
 }
 
 export function projectNotePreview(value: string): string {
-  return value
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/^[ \t]*#{1,6}[ \t]+/gm, "")
-    .replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "")
-    .replace(/^[ \t]*>[ \t]?/gm, "")
-    .replace(/[*_~`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const tree = fromMarkdown(value, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  }) as MarkdownNode;
+
+  const extractText = (node: MarkdownNode): string => {
+    if (node.type === "definition" || node.type === "html" || node.type === "thematicBreak") return "";
+    if (node.type === "image") return typeof node.alt === "string" ? node.alt : "";
+    if (typeof node.value === "string") return node.value;
+    return (node.children ?? []).map(extractText).filter(Boolean).join(" ");
+  };
+
+  return extractText(tree).replace(/\s+/g, " ").trim();
 }
