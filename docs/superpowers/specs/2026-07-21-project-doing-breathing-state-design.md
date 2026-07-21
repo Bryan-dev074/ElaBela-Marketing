@@ -28,4 +28,3 @@ Hacer que un proyecto activo en estado `doing` se reconozca de inmediato sin rom
 - El halo no bloquea clics ni lectura y tiene `aria-hidden="true"`.
 - El modo de movimiento reducido elimina la respiración continua.
 - Las pruebas distinguen `doing` de `todo` y validan el tratamiento reducido.
-

@@ -298,10 +298,19 @@ describe("ProjectCard", () => {
     renderCard();
 
     expect(screen.getByRole("button", { name: "Cambiar estado de Campaña Glow" }))
-      .toHaveClass("border-blue-400/40", "bg-blue-500/15", "text-blue-200");
+      .toHaveClass(
+        "border-blue-400/40",
+        "bg-blue-500/15",
+        "text-blue-200",
+        "shadow-[0_0_22px_-10px_rgba(96,165,250,0.95)]",
+      );
     const article = screen.getByRole("article", { name: "Campaña Glow" });
-    const glow = document.querySelector("[data-project-doing-glow]");
+    const glows = document.querySelectorAll("[data-project-doing-glow]");
+    expect(glows).toHaveLength(1);
+    const glow = glows[0];
     expect(glow).toHaveClass("bg-[radial-gradient(circle_at_center,rgba(96,165,250,0.24),transparent_70%)]");
+    expect(glow).toHaveClass("pointer-events-none");
+    expect(glow).toHaveAttribute("aria-hidden", "true");
     expect(glow?.parentElement).toBe(article);
     expect(article).toHaveClass("overflow-hidden");
   });
@@ -309,6 +318,15 @@ describe("ProjectCard", () => {
   it("keeps non-doing cards free of the blue breathing treatment", () => {
     renderCard({ value: project({ status: "todo" }) });
 
+    const status = screen.getByRole("button", { name: "Cambiar estado de Campaña Glow" });
+    [
+      "border-blue-400/40",
+      "bg-blue-500/15",
+      "text-blue-200",
+      "hover:border-blue-300/60",
+      "hover:text-blue-100",
+      "shadow-[0_0_22px_-10px_rgba(96,165,250,0.95)]",
+    ].forEach((className) => expect(status).not.toHaveClass(className));
     expect(document.querySelector("[data-project-doing-glow]"))
       .not.toBeInTheDocument();
   });

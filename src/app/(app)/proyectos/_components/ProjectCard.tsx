@@ -164,7 +164,7 @@ export function ProjectCard({
             {...cursorIntentProps("edit", "Cambiar estado")}
             className={`pointer-events-auto press inline-flex min-h-11 items-center rounded-full border px-3 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
               isActiveDoing
-                ? "border-blue-400/40 bg-blue-500/15 text-blue-200 hover:border-blue-300/60 hover:text-blue-100"
+                ? "border-blue-400/40 bg-blue-500/15 text-blue-200 shadow-[0_0_22px_-10px_rgba(96,165,250,0.95)] hover:border-blue-300/60 hover:text-blue-100"
                 : "border-white/10 text-[var(--muted)] hover:border-white/20 hover:text-white"
             }`}
           >

@@ -87,4 +87,3 @@ Expected: toda la suite, tipos y build terminan con código 0.
 - [ ] **Step 5: Revisar visualmente y publicar**
 
 Verificar `/proyectos` en escritorio y móvil, confirmar consola limpia, luego hacer commit y push tanto a `codex/elabela-functional-upgrades` como a `main`.
-
