@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShieldCheck, KeyRound, CheckCircle2, UserRound, Users, Plus, Pencil, Trash2, Camera, Loader2 } from "lucide-react";
 import { PageHeader, Card, Button, Modal, Field, Input, Select, Reveal } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar } from "@/components/Avatar";
 import { useProfiles, fileToAvatar } from "@/lib/profiles";
 import { updatePassword } from "@/app/login/actions";
@@ -75,8 +76,7 @@ function ProfilePhoto({ id, username }: { id: string; username: string }) {
         onClick={() => !busy && inputRef.current?.click()}
         disabled={busy}
         aria-label="Cambiar foto de perfil"
-        data-cursor-color="#d6ab99"
-        data-cursor-label="Cambiar foto"
+        {...cursorIntentProps("edit", "Cambiar foto")}
         className="press group relative rounded-full"
       >
         <Avatar username={username} size={84} ring />
@@ -99,8 +99,7 @@ function ProfilePhoto({ id, username }: { id: string; username: string }) {
         <button
           type="button"
           onClick={removePhoto}
-          data-cursor-color="#f87171"
-          data-cursor-label="Quitar"
+          {...cursorIntentProps("danger", "Quitar")}
           className="text-[11px] text-[var(--faint)] transition hover:text-red-300"
         >
           Quitar foto
@@ -138,8 +137,7 @@ function RowAvatarButton({ pid, username, onError }: { pid: string; username: st
         type="button"
         onClick={() => !busy && inputRef.current?.click()}
         aria-label={`Cambiar foto de @${username}`}
-        data-cursor-color="#d6ab99"
-        data-cursor-label="Cambiar foto"
+        {...cursorIntentProps("edit", "Cambiar foto")}
         className="press group relative shrink-0 rounded-full"
       >
         <Avatar username={username} size={38} />
@@ -309,7 +307,7 @@ export default function PerfilView({ id, fullName, username, role }: { id: strin
                       onClick={() => { setErr(null); setDraft({ id: p.id, username: p.username, fullName: p.fullName, role: p.role, password: "" }); }}
                       className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
                       aria-label={`Editar a @${p.username}`}
-                      data-cursor-label="Editar"
+                      {...cursorIntentProps("edit")}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -319,8 +317,7 @@ export default function PerfilView({ id, fullName, username, role }: { id: strin
                           onClick={() => { setConfirmDel(null); remove(p.id); }}
                           disabled={pending}
                           className="press h-9 shrink-0 rounded-lg border border-red-400/40 bg-red-500/15 px-2.5 text-[11px] font-semibold text-red-300 disabled:opacity-50"
-                          data-cursor-color="#f87171"
-                          data-cursor-label="Confirmar"
+                          {...cursorIntentProps("danger", "Confirmar")}
                         >
                           ¿Seguro?
                         </button>
@@ -329,8 +326,7 @@ export default function PerfilView({ id, fullName, username, role }: { id: strin
                           onClick={() => setConfirmDel(p.id)}
                           className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-red-400/30 hover:text-red-300"
                           aria-label={`Eliminar a @${p.username}`}
-                          data-cursor-color="#f87171"
-                          data-cursor-label="Eliminar"
+                          {...cursorIntentProps("danger", "Eliminar")}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

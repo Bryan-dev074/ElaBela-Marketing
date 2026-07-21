@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { containTabFocus } from "@/lib/focus-management";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 
 const EMPTY_IMAGES: string[] = [];
 const EMPTY_LABELS: string[] = [];
@@ -136,7 +137,7 @@ export function Lightbox({
               type="button"
               onClick={onClose}
               aria-label="Cerrar"
-              data-cursor-label="Cerrar"
+              {...cursorIntentProps("open", "Cerrar")}
               className="press absolute -right-3 -top-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/80 text-white backdrop-blur transition-colors hover:border-nude/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nude"
             >
               <X className="h-4 w-4" />

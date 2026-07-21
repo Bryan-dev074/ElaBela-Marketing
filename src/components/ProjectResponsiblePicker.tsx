@@ -3,6 +3,7 @@
 import { Avatar } from "@/components/Avatar";
 import { normalizeAdditionalResponsibles } from "@/lib/projects";
 import { useProfiles } from "@/lib/profiles";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 
 export type ProjectResponsiblePickerProps = {
   owner: string;
@@ -30,7 +31,7 @@ export function ProjectResponsiblePicker({ owner, value, onChange, disabled = fa
                 : [...value, profile.username];
               onChange(normalizeAdditionalResponsibles(owner, next));
             }}
-            data-cursor-label={profile.fullName || profile.username}
+            {...cursorIntentProps("open", profile.fullName || profile.username)}
             className={`press flex h-9 items-center gap-2 rounded-xl border px-3 text-sm capitalize transition ${
               pressed
                 ? "border-nude/60 bg-nude/15 text-white shadow-[0_0_18px_-6px_rgba(214,171,153,0.7)]"

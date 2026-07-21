@@ -14,9 +14,9 @@ import {
   Segmented,
   StatePill,
   WeekdayPicker,
-  stateCursorProps,
   taskStateClass,
 } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
 import { IconPicker } from "@/components/IconPicker";
 import { WEEKDAYS, type DailyTask, type PostType, type TaskState } from "@/lib/data";
@@ -173,13 +173,13 @@ function TaskRow({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.28, ease: EASE, delay: index * 0.03 }}
-      {...stateCursorProps(state)}
       className={`group flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${taskStateClass(state)}`}
     >
       <button
         type="button"
         onClick={onCycle}
         disabled={pending}
+        {...cursorIntentProps(NEXT[state] === "doing" ? "doing" : NEXT[state] === "done" ? "complete" : "open")}
         className="flex min-h-10 min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-wait disabled:opacity-70"
         aria-label={`Cambiar estado de ${task.name}`}
       >
@@ -200,7 +200,7 @@ function TaskRow({
       </button>
       <StatePill state={state} pulse />
       {isAdmin && (
-        <button type="button" onClick={onEdit} className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white" aria-label={`Editar ${task.name}`}>
+        <button type="button" onClick={onEdit} {...cursorIntentProps("edit")} className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white" aria-label={`Editar ${task.name}`}>
           <Pencil className="h-4 w-4" />
         </button>
       )}

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, animate, useMotionValue } from "framer-motion";
 import { CheckCircle2, Users, FolderKanban, TrendingUp, ArrowUpRight, CalendarDays, Check } from "lucide-react";
-import { Card, Reveal, StatePill, taskStateClass, stateCursorProps, EmptyState, IconGlyph, Modal, Field, Input, Button } from "@/components/ui";
+import { Card, Reveal, StatePill, taskStateClass, EmptyState, IconGlyph, Modal, Field, Input, Button } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, AvatarStack, OwnerPicker } from "@/components/Avatar";
 import { StoryCard } from "@/components/StoryCard";
 import { TimeListEditor } from "@/components/TimePicker";
@@ -196,7 +197,7 @@ export default function DashboardView({ name, username, userId, role }: { name: 
           <Card className="ring-glow flex h-full flex-col p-6" hover={false}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Mis tareas</h2>
-              <Link href="/tareas" data-cursor-label="Abrir" className="glow-link flex items-center gap-1 text-xs text-nude transition hover:text-white">
+              <Link href="/tareas" {...cursorIntentProps("open")} className="glow-link flex items-center gap-1 text-xs text-nude transition hover:text-white">
                 Ver todas <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </div>
@@ -207,7 +208,7 @@ export default function DashboardView({ name, username, userId, role }: { name: 
                     key={t.id}
                     onClick={() => cycle(t.id)}
                     disabled={dailyLogs.isPending?.(t.id) ?? false}
-                    {...stateCursorProps(t.state)}
+                    {...cursorIntentProps(NEXT[t.state] === "doing" ? "doing" : NEXT[t.state] === "done" ? "complete" : "open")}
                     style={{ animationDelay: `${i * 40}ms` }}
                     className={`press animate-fade-up flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150 hover:brightness-125 disabled:cursor-wait disabled:opacity-70 ${taskStateClass(t.state)}`}
                   >
@@ -255,7 +256,6 @@ export default function DashboardView({ name, username, userId, role }: { name: 
                 team.slice(0, 6).map((t, i) => (
                   <div
                     key={t.id}
-                    {...stateCursorProps(t.state)}
                     style={{ animationDelay: `${i * 40}ms` }}
                     className={`animate-fade-up flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 ${taskStateClass(t.state)}`}
                   >

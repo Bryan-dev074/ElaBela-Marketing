@@ -101,6 +101,14 @@ describe("ProjectsPage", () => {
     expect(screen.queryByText(/Archivar|Restaurar/)).not.toBeInTheDocument();
   });
 
+  it("opens an in-progress project with an open cursor intent instead of its status color", () => {
+    render(<ProjectsPage />);
+
+    const openProject = screen.getByRole("button", { name: "Campaña Glow" });
+    expect(openProject).toHaveAttribute("data-cursor", "open");
+    expect(openProject).not.toHaveAttribute("data-cursor-color", "#3b82f6");
+  });
+
   it("completes with the authenticated actor and responsible snapshot", async () => {
     render(<ProjectsPage />);
     fireEvent.click(screen.getByRole("button", { name: /Cambiar estado de Campaña Glow/i }));

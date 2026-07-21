@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 import {
   Button, EmptyState, Field, Input, Modal, PageHeader, Reveal, Segmented,
-  Select, StateSelector, Textarea, stateCursorProps, stateLabel,
+  Select, StateSelector, Textarea, stateLabel,
 } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
 import { Markdown } from "@/components/Markdown";
 import { ProjectResponsiblePicker } from "@/components/ProjectResponsiblePicker";
@@ -310,11 +311,11 @@ export default function ProjectsPage() {
           const responsibles = project.completedResponsibleUsernames ?? [project.owner, ...project.responsibleUsernames];
           return (
             <Reveal key={project.id} delay={index * 0.05} className="h-full">
-              <article {...stateCursorProps(project.status)} className="glass glass-hover card-sheen group relative flex h-full flex-col rounded-2xl p-6">
+              <article className="glass glass-hover card-sheen group relative flex h-full flex-col rounded-2xl p-6">
                 <div className="mb-4 flex items-start gap-4">
                   <ProgressRing pct={projectPct(project)} />
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => setOpenId(project.id)} className="line-clamp-2 text-left text-lg font-semibold text-white hover:text-nude">{project.name}</button>
+                    <button type="button" onClick={() => setOpenId(project.id)} {...cursorIntentProps("open")} className="line-clamp-2 text-left text-lg font-semibold text-white hover:text-nude">{project.name}</button>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[var(--muted)]">
                       {tab === "completed" ? <AvatarStack usernames={responsibles} size={18} /> : <AvatarChip username={project.owner} size={16} />}
                       {tab === "completed" ? (
@@ -369,6 +370,7 @@ export default function ProjectsPage() {
                     <button
                       type="button" disabled={pending} aria-label={`Reabrir ${project.name}`}
                       onClick={() => void persistStatus(project, "doing")}
+                      {...cursorIntentProps("doing", "Reabrir")}
                       className="press flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-[var(--muted)]"
                     ><RotateCcw className="h-3 w-3" /> Reabrir</button>
                   ) : tab === "active" ? (
@@ -376,12 +378,14 @@ export default function ProjectsPage() {
                       <button
                         type="button" disabled={pending} aria-label={`Editar ${project.name}`}
                         onClick={() => { setError(""); setDraft(toDraft(project)); }}
+                        {...cursorIntentProps("edit")}
                         className="press flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-[var(--muted)]"
                       ><Pencil className="h-3 w-3" /> Editar</button>
                       <button
                         type="button" disabled={pending}
                         aria-label={asking ? `Confirmar eliminación de ${project.name}` : `Eliminar ${project.name}`}
                         onClick={() => asking ? void removeProject(project.id) : askDelete(project.id)}
+                        {...cursorIntentProps("danger", asking ? "Confirmar" : "Eliminar")}
                         className="press ml-auto flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-[var(--faint)]"
                       ><Trash2 className="h-3 w-3" />{asking && "¿Seguro?"}</button>
                     </>

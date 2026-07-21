@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, Copy, Check, Plus, Pencil, Trash2, ImagePlus, ArrowUpRight, Quote, Link2, Settings2 } from "lucide-react";
 import { PageHeader, Button, Modal, Field, Input, Textarea, Select, EmptyState, IconGlyph } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { IconPicker } from "@/components/IconPicker";
 import { Lightbox } from "@/components/Lightbox";
 import { ToolCategoryManager } from "@/components/ToolCategoryManager";
@@ -81,7 +82,7 @@ function EditBtn({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label="Editar recurso"
-      data-cursor-label="Editar"
+      {...cursorIntentProps("edit")}
       className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/30 text-[var(--faint)] backdrop-blur-sm transition hover:border-white/25 hover:text-white"
     >
       <Pencil className="h-3.5 w-3.5" />
@@ -102,8 +103,7 @@ function DeleteBtn({ onConfirm }: { onConfirm: () => void }) {
       type="button"
       onClick={() => (armed ? onConfirm() : setArmed(true))}
       aria-label={armed ? "Confirmar eliminación" : "Eliminar recurso"}
-      data-cursor-label={armed ? "Confirmar" : "Eliminar"}
-      data-cursor-color="#f87171"
+      {...cursorIntentProps("danger", armed ? "Confirmar" : "Eliminar")}
       className={`press flex h-9 items-center justify-center rounded-lg border backdrop-blur-sm transition ${
         armed
           ? "gap-1 border-red-400/60 bg-red-500/20 px-2.5 text-red-200 shadow-[0_0_16px_-6px_rgba(248,113,113,0.8)]"
@@ -169,7 +169,7 @@ function ToolMedia({ item, onView }: { item: ToolItem; onView: () => void }) {
       type="button"
       onClick={onView}
       aria-label={`Ver imagen de ${item.title}`}
-      data-cursor-label="Ver en grande"
+      {...cursorIntentProps("open", "Ver en grande")}
       className="press pointer-events-auto relative z-[2] mt-3 block aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black/30"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -488,7 +488,6 @@ export default function ToolsPage() {
               key={category.id}
               onClick={() => setFilter(active ? "all" : category.id)}
               aria-pressed={active}
-              data-cursor-color={accent}
               className={`press inline-flex h-11 shrink-0 snap-start items-center gap-1.5 rounded-xl border px-4 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
                 active ? "text-white" : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"
               }`}
@@ -544,8 +543,7 @@ export default function ToolsPage() {
                   <button
                     type="button"
                     onClick={() => copy(text, item.id)}
-                    data-cursor-label="Copiar"
-                    data-cursor-color={NUDE}
+                    {...cursorIntentProps("copy")}
                     aria-label={`Copiar prompt ${item.title}`}
                     className="relative z-[1] mt-3 flex-1 overflow-hidden rounded-xl border border-white/[0.08] bg-black/40 text-left transition hover:border-nude/30"
                   >
@@ -581,8 +579,7 @@ export default function ToolsPage() {
                   <motion.button
                     whileTap={{ scale: 0.96 }}
                     onClick={() => copy(text, item.id)}
-                    data-cursor-label="Copiar"
-                    data-cursor-color={NUDE}
+                    {...cursorIntentProps("copy")}
                     aria-label={`Copiar prompt ${item.title}`}
                     className={`relative z-[1] mt-4 flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl border py-3 text-sm font-semibold transition-colors duration-300 ${
                       isCopied
@@ -637,8 +634,7 @@ export default function ToolsPage() {
                     rel="noopener noreferrer"
                     className="absolute inset-0 z-0"
                     aria-label={`Abrir ${item.title}`}
-                    data-cursor-label="Abrir"
-                    data-cursor-color={NUDE}
+                    {...cursorIntentProps("external")}
                   />
                 )}
 
@@ -677,7 +673,7 @@ export default function ToolsPage() {
                     <button
                       type="button"
                       onClick={() => beginEdit(item)}
-                      data-cursor-label="Completar"
+                      {...cursorIntentProps("edit")}
                       className="press pointer-events-auto flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-3 text-xs font-medium text-[var(--muted)] transition hover:border-nude/40 hover:text-nude"
                     >
                       <Link2 className="h-3.5 w-3.5" /> Agregar link

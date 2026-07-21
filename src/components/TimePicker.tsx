@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Plus, X, Check } from "lucide-react";
 import { useDialogPortalTarget } from "@/components/dialog-portal";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 
 /**
  * Interactive time picker: a floating "clock" panel with hour/minute wheels
@@ -148,7 +149,7 @@ export function TimePicker({ value, onChange, className = "" }: { value: string;
         type="button"
         onClick={() => { setAnchor(btnRef.current?.getBoundingClientRect() ?? null); setOpen(true); }}
         className={`field num flex items-center justify-between gap-2 text-left ${className}`}
-        data-cursor-label="Elegir hora"
+        {...cursorIntentProps("open", "Elegir hora")}
       >
         <span>{value || "— : —"}</span>
         <Clock className="h-3.5 w-3.5 text-nude" />
@@ -197,7 +198,7 @@ export function TimeListEditor({ times, onChange }: { times: string[]; onChange:
         type="button"
         onClick={() => { setAnchor(addRef.current?.getBoundingClientRect() ?? null); setOpen(true); }}
         className="press inline-flex items-center gap-1 rounded-full border border-dashed border-white/20 px-2.5 py-1 text-xs text-[var(--muted)] transition hover:border-nude/50 hover:text-white"
-        data-cursor-label="Agregar horario"
+        {...cursorIntentProps("open", "Agregar horario")}
       >
         <Plus className="h-3 w-3" /> Horario
       </button>

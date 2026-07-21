@@ -6,6 +6,7 @@ import { Check, Copy, Eye, EyeOff, Globe, Lock, Pencil, Plus, Settings2, ShieldC
 import { CredentialCategoryManager } from "@/components/CredentialCategoryManager";
 import { IconPicker } from "@/components/IconPicker";
 import { Button, Card, Field, IconGlyph, Input, Modal, PageHeader, Select } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import {
   categoryIdAfterScopeChange,
   groupCredentials,
@@ -132,7 +133,7 @@ function Row({
               type="button"
               onClick={() => void copy(credential.identifier, `id-${credential.id}`)}
               className="press inline-flex items-center gap-1 rounded transition hover:text-white"
-              data-cursor-label="Copiar"
+              {...cursorIntentProps("copy")}
               aria-label={`Copiar ${credential.idType === "email" ? "correo" : "usuario"}`}
             >
               <RevealValue show={show} value={credential.identifier} hidden={"•".repeat(Math.min(10, (credential.identifier || "······").length))} />
@@ -148,15 +149,15 @@ function Row({
       <div className="flex shrink-0 items-center gap-1">
         {configured ? (
           <>
-            <button type="button" onClick={() => setShow((current) => !current)} className={iconButton} aria-label={show ? "Ocultar valores" : "Mostrar valores"} data-cursor-label={show ? "Ocultar" : "Mostrar"}>
+            <button type="button" onClick={() => setShow((current) => !current)} className={iconButton} aria-label={show ? "Ocultar valores" : "Mostrar valores"} {...cursorIntentProps("open", show ? "Ocultar" : "Mostrar")}>
               {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
-            <button type="button" onClick={() => void copy(credential.secret, `sec-${credential.id}`)} className={iconButton} aria-label="Copiar contraseña" data-cursor-label="Copiar">
+            <button type="button" onClick={() => void copy(credential.secret, `sec-${credential.id}`)} className={iconButton} aria-label="Copiar contraseña" {...cursorIntentProps("copy")}>
               <CopyIcon done={copied === `sec-${credential.id}`} />
             </button>
           </>
         ) : null}
-        <button type="button" onClick={onEdit} disabled={disabled || deleting} className={iconButton} aria-label="Editar acceso" data-cursor-label="Editar">
+        <button type="button" onClick={onEdit} disabled={disabled || deleting} className={iconButton} aria-label="Editar acceso" {...cursorIntentProps("edit")}>
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
@@ -169,8 +170,7 @@ function Row({
               : "w-8 border-white/10 text-[var(--faint)] opacity-0 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
           }`}
           aria-label={deleting ? "Eliminando acceso" : armed ? "Confirmar eliminación" : "Eliminar acceso"}
-          data-cursor-label={deleting ? "Eliminando" : armed ? "Confirmar" : "Eliminar"}
-          data-cursor-color="#f87171"
+          {...cursorIntentProps("danger", deleting ? "Eliminando" : armed ? "Confirmar" : "Eliminar")}
         >
           {deleting ? "Eliminando…" : armed ? "¿Seguro?" : <Trash2 className="h-3.5 w-3.5" />}
         </button>

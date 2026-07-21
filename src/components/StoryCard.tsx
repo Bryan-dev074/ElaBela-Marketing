@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Clock, Settings2 } from "lucide-react";
 import { Card } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { AvatarChip } from "@/components/Avatar";
 import { storyDoneToday, type StoryPlatform } from "@/lib/data";
 
@@ -59,7 +60,7 @@ export function StoryCard({
           <button
             type="button"
             onClick={onCfg}
-            data-cursor-label="Configurar"
+            {...cursorIntentProps("edit", "Configurar")}
             className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/25 hover:text-white"
             aria-label={`Configurar historias de ${s.platform}`}
           >
@@ -129,7 +130,7 @@ export function StoryCard({
           className={`press flex-[2] rounded-lg py-1.5 text-sm transition ${
             atMax ? "bg-nude/15 font-semibold text-nude" : "bg-white/10 text-white hover:bg-white/15"
           } disabled:opacity-70`}
-          data-cursor-label={atMax ? "¡Completo!" : "+1 historia"}
+          {...cursorIntentProps("complete", atMax ? "¡Completo!" : "+1 historia")}
         >
           {atMax ? "¡Completo por hoy! ✨" : "+ Subir"}
         </button>

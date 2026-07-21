@@ -35,6 +35,28 @@ describe("CustomCursor", () => {
     expect(container.querySelector(".cursor-tag")).toHaveTextContent("Completar");
   });
 
+  it.each([
+    ["edit", "Editar"],
+    ["complete", "Completar"],
+    ["danger", "Eliminar"],
+    ["doing", "En curso"],
+    ["copy", "Copiar"],
+    ["external", "Visitar"],
+    ["drag", "Arrastrar"],
+  ])("shows the %s semantic action label", (intent, label) => {
+    const { container } = render(
+      <>
+        <CustomCursor />
+        <button data-cursor={intent}>Acción</button>
+      </>,
+    );
+
+    fireEvent.mouseOver(container.querySelector("button")!);
+
+    expect(container.querySelector(".cursor-ring")).toHaveAttribute("data-hover", "1");
+    expect(container.querySelector(".cursor-tag")).toHaveTextContent(label);
+  });
+
   it("clears hover and hides the tag over a text field", () => {
     const { container } = render(
       <>

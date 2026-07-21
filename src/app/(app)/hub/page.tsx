@@ -9,6 +9,7 @@ import {
 import {
   PageHeader, Card, Reveal, StatCard, Segmented, EmptyState, Button, Modal, Field, Input, Select,
 } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { fmtShortDate, type Client, type Product } from "@/lib/data";
 import { useClients, useProducts } from "@/lib/db";
 
@@ -254,7 +255,7 @@ export default function HubPage() {
                 type="button"
                 aria-label="Vista tarjetas"
                 aria-pressed={clientView === "cards"}
-                data-cursor-label="Vista tarjetas"
+                {...cursorIntentProps("open", "Vista tarjetas")}
                 onClick={() => changeClientView("cards")}
                 className={`press flex h-8 w-8 items-center justify-center rounded-lg transition ${
                   clientView === "cards" ? "bg-white/10 text-white" : "text-[var(--muted)] hover:text-white"
@@ -266,7 +267,7 @@ export default function HubPage() {
                 type="button"
                 aria-label="Vista tabla"
                 aria-pressed={clientView === "table"}
-                data-cursor-label="Vista tabla"
+                {...cursorIntentProps("open", "Vista tabla")}
                 onClick={() => changeClientView("table")}
                 className={`press flex h-8 w-8 items-center justify-center rounded-lg transition ${
                   clientView === "table" ? "bg-white/10 text-white" : "text-[var(--muted)] hover:text-white"
@@ -310,7 +311,7 @@ export default function HubPage() {
                     <button
                       type="button"
                       aria-label={`Editar a ${c.name}`}
-                      data-cursor-label="Editar"
+                      {...cursorIntentProps("edit")}
                       onClick={() => openEditClient(c)}
                       className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-[var(--muted)] backdrop-blur transition hover:border-white/25 hover:text-white"
                     >
@@ -319,8 +320,7 @@ export default function HubPage() {
                     <button
                       type="button"
                       aria-label={armed ? `Confirmar eliminación de ${c.name}` : `Eliminar a ${c.name}`}
-                      data-cursor-color="#f87171"
-                      data-cursor-label={armed ? "¿Seguro?" : "Eliminar"}
+                      {...cursorIntentProps("danger", armed ? "¿Seguro?" : "Eliminar")}
                       onClick={() => tapDelete(key, () => removeClient(c.id))}
                       className={`press flex h-9 items-center justify-center rounded-lg border backdrop-blur transition ${
                         armed
@@ -499,7 +499,7 @@ export default function HubPage() {
                               <button
                                 type="button"
                                 aria-label={`Editar a ${c.name}`}
-                                data-cursor-label="Editar"
+                                {...cursorIntentProps("edit")}
                                 onClick={() => openEditClient(c)}
                                 className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/30 text-[var(--muted)] transition hover:border-white/25 hover:text-white"
                               >
@@ -508,8 +508,7 @@ export default function HubPage() {
                               <button
                                 type="button"
                                 aria-label={armed ? `Confirmar eliminación de ${c.name}` : `Eliminar a ${c.name}`}
-                                data-cursor-color="#f87171"
-                                data-cursor-label={armed ? "¿Seguro?" : "Eliminar"}
+                                {...cursorIntentProps("danger", armed ? "¿Seguro?" : "Eliminar")}
                                 onClick={() => tapDelete(key, () => removeClient(c.id))}
                                 className={`press flex h-9 items-center justify-center rounded-lg border transition ${
                                   armed
@@ -583,7 +582,7 @@ export default function HubPage() {
                               <button
                                 type="button"
                                 aria-label={`Editar ${p.name}`}
-                                data-cursor-label="Editar"
+                                {...cursorIntentProps("edit")}
                                 onClick={() => openEditProduct(p)}
                                 className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-black/30 text-[var(--muted)] transition hover:border-white/25 hover:text-white"
                               >
@@ -592,8 +591,7 @@ export default function HubPage() {
                               <button
                                 type="button"
                                 aria-label={armed ? `Confirmar eliminación de ${p.name}` : `Eliminar ${p.name}`}
-                                data-cursor-color="#f87171"
-                                data-cursor-label={armed ? "¿Seguro?" : "Eliminar"}
+                                {...cursorIntentProps("danger", armed ? "¿Seguro?" : "Eliminar")}
                                 onClick={() => tapDelete(key, () => removeProduct(p.code))}
                                 className={`press flex h-9 items-center justify-center rounded-lg border transition ${
                                   armed

@@ -25,8 +25,8 @@ import {
   Textarea,
   StateSelector,
   EmptyState,
-  stateCursorProps,
 } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, AvatarChip, OwnerPicker } from "@/components/Avatar";
 import { Markdown } from "@/components/Markdown";
 import { type Guion, type TaskState, fmtShortDate } from "@/lib/data";
@@ -59,12 +59,7 @@ type Draft = {
   body: string;
 };
 
-/** Cursor tinted with the guion state + drag hint label. */
-const dragCursorProps = (s: GState) => ({
-  ...stateCursorProps(META[s].task),
-  "data-cursor-color": META[s].color,
-  "data-cursor-label": "Arrastrá para mover",
-});
+const dragCursorProps = () => cursorIntentProps("drag", "Arrastrar");
 
 /* ---------------- Page ---------------- */
 
@@ -270,15 +265,14 @@ export default function GuionesPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openGuion(g.id); }
                         }}
-                        {...dragCursorProps(g.state)}
+                        {...dragCursorProps()}
                         className={`kanban-card card-sheen group relative w-full rounded-xl border p-4 text-left transition hover:brightness-110 ${META[g.state].bg} ${dragId === g.id ? "dragging" : ""}`}
                       >
                         {/* delete (2-click confirm), appears on hover */}
                         <button
                           type="button"
                           aria-label={confirmDel === g.id ? `Confirmar eliminación de ${g.name}` : `Eliminar ${g.name}`}
-                          data-cursor-color="#f87171"
-                          data-cursor-label={confirmDel === g.id ? "Tocá de nuevo" : "Eliminar"}
+                          {...cursorIntentProps("danger", confirmDel === g.id ? "Tocá de nuevo" : "Eliminar")}
                           onClick={(e) => { e.stopPropagation(); deleteGuion(g.id); }}
                           className={`press absolute right-2 top-2 z-10 flex h-9 items-center justify-center gap-1 rounded-lg border text-[11px] transition ${
                             confirmDel === g.id
@@ -342,8 +336,7 @@ export default function GuionesPage() {
         href="https://content-studio-ia.vercel.app/"
         target="_blank"
         rel="noopener noreferrer"
-        data-cursor-color="#d6ab99"
-        data-cursor-label="Abrir"
+        {...cursorIntentProps("external")}
         className="ring-glow glass mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl p-5 transition hover:bg-white/[0.04]"
       >
         <span className="flex items-center gap-4">
@@ -380,8 +373,7 @@ export default function GuionesPage() {
               <button
                 type="button"
                 onClick={() => deleteGuion(current.id)}
-                data-cursor-color="#f87171"
-                data-cursor-label={confirmDel === current.id ? "Tocá de nuevo" : "Eliminar"}
+                {...cursorIntentProps("danger", confirmDel === current.id ? "Tocá de nuevo" : "Eliminar")}
                 className={`press flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition ${
                   confirmDel === current.id
                     ? "border-red-400/50 bg-red-500/20 text-red-300"
@@ -436,8 +428,7 @@ export default function GuionesPage() {
                   href={current.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  data-cursor-color="#d6ab99"
-                  data-cursor-label="Abrir recurso"
+                  {...cursorIntentProps("external", "Abrir recurso")}
                   className="glow-link inline-flex items-center gap-1.5 px-1 py-1.5 font-medium text-nude"
                 >
                   Ver recurso <ExternalLink className="h-3 w-3" />

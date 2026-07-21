@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ImagePlus, Trash2 } from "lucide-react";
 import { IconGlyph } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { useDialogPortalTarget } from "@/components/dialog-portal";
 import { fileToImage } from "@/lib/profiles";
 
@@ -177,7 +178,7 @@ export function IconPicker({
         className={`press flex items-center justify-center rounded-xl border border-[var(--border)] bg-black/35 text-xl transition hover:border-nude/50 hover:bg-black/50 ${className}`}
         style={{ width: size, height: size }}
         aria-label="Elegir ícono"
-        data-cursor-label="Elegir ícono"
+        {...cursorIntentProps("open", "Elegir ícono")}
       >
         <IconGlyph icon={value} size={Math.round(size * 0.62)} rounded="rounded-md" />
       </button>
@@ -213,7 +214,7 @@ export function IconPicker({
                     <button
                       type="button"
                       onClick={() => fileRef.current?.click()}
-                      data-cursor-label="Subir imagen o GIF"
+                      {...cursorIntentProps("open", "Subir imagen o GIF")}
                       className="press flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/15 py-1.5 text-[11px] font-medium text-[var(--muted)] transition hover:border-nude/50 hover:text-white"
                     >
                       <ImagePlus className="h-3.5 w-3.5" /> Imagen o GIF propio
@@ -223,8 +224,7 @@ export function IconPicker({
                         type="button"
                         onClick={() => { onChange("✨"); closePanel(); }}
                         aria-label="Quitar imagen"
-                        data-cursor-color="#f87171"
-                        data-cursor-label="Quitar imagen"
+                        {...cursorIntentProps("danger", "Quitar imagen")}
                         className="press flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-red-400/40 hover:text-red-300"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

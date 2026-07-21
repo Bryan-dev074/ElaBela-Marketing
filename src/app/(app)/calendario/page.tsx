@@ -7,6 +7,7 @@ import {
   CalendarPlus, CalendarX2, Trash2, GripVertical,
 } from "lucide-react";
 import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, Reveal } from "@/components/ui";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, OwnerPicker } from "@/components/Avatar";
 import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Project, type Guion } from "@/lib/data";
 import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
@@ -183,14 +184,14 @@ export default function CalendarioPage() {
               <button
                 onClick={() => goMonth(-1)}
                 aria-label="Mes anterior"
-                data-cursor-label="Mes anterior"
+                {...cursorIntentProps("open", "Mes anterior")}
                 className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--muted)] transition hover:border-white/25 hover:text-white"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
                 onClick={goToday}
-                data-cursor-label="Ir a hoy"
+                {...cursorIntentProps("open", "Ir a hoy")}
                 className="press h-9 rounded-lg border border-white/10 px-3 text-xs font-medium text-[var(--muted)] transition hover:border-nude/40 hover:text-nude"
               >
                 Hoy
@@ -198,7 +199,7 @@ export default function CalendarioPage() {
               <button
                 onClick={() => goMonth(1)}
                 aria-label="Mes siguiente"
-                data-cursor-label="Mes siguiente"
+                {...cursorIntentProps("open", "Mes siguiente")}
                 className="press flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-[var(--muted)] transition hover:border-white/25 hover:text-white"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -239,7 +240,7 @@ export default function CalendarioPage() {
                     onDragOver={(e) => { e.preventDefault(); if (dragOver !== dateIso) setDragOver(dateIso); }}
                     onDragLeave={() => setDragOver((v) => (v === dateIso ? null : v))}
                     onDrop={(e) => dropOn(dateIso, e)}
-                    data-cursor-label={dragId ? "Soltar acá" : "Ver día"}
+                    {...cursorIntentProps(dragId ? "drag" : "open", dragId ? "Soltar acá" : "Ver día")}
                     className={`group relative flex aspect-square flex-col rounded-xl border p-1.5 text-left transition-all duration-200 sm:p-2 ${
                       isOver
                         ? "scale-[1.05] border-nude bg-nude/20 shadow-glow-nude"
@@ -311,7 +312,7 @@ export default function CalendarioPage() {
                         setDragId("p:" + p.id);
                       }}
                       onDragEnd={() => { setDragId(null); setDragOver(null); }}
-                      data-cursor-label="Arrastrar"
+                      {...cursorIntentProps("drag")}
                       className={`kanban-card flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition hover:border-nude/40 hover:bg-white/[0.06] ${
                         dragId === "p:" + p.id ? "dragging" : ""
                       }`}
@@ -413,7 +414,7 @@ export default function CalendarioPage() {
             <Reveal key={d} delay={i * 0.04} className="h-full">
               <button
                 onClick={() => setSelected(d)}
-                data-cursor-label="Ver día"
+                {...cursorIntentProps("open", "Ver día")}
                 className={`card-sheen glass flex h-full min-h-[11rem] w-full flex-col rounded-2xl p-4 text-left transition hover:border-white/20 ${
                   isToday ? "border-nude/50 shadow-glow-nude" : ""
                 }`}
@@ -525,8 +526,7 @@ export default function CalendarioPage() {
                         <button
                           onClick={() => updateProject(p.id, { due: undefined })}
                           aria-label={`Desagendar ${p.name}`}
-                          data-cursor-label="Desagendar"
-                          data-cursor-color="#fbbf24"
+                          {...cursorIntentProps("warning", "Desagendar")}
                           className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--faint)] transition hover:bg-white/10 hover:text-amber-300"
                         >
                           <CalendarX2 className="h-4 w-4" />
@@ -573,8 +573,7 @@ export default function CalendarioPage() {
                               else setConfirmDel(e.id);
                             }}
                             aria-label={armed ? `Confirmar eliminación de ${e.title}` : `Eliminar ${e.title}`}
-                            data-cursor-color="#f87171"
-                            data-cursor-label={armed ? "Confirmar" : "Eliminar"}
+                            {...cursorIntentProps("danger", armed ? "Confirmar" : "Eliminar")}
                             className={`press flex h-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition ${
                               armed
                                 ? "border border-red-400/40 bg-red-500/20 px-2.5 text-red-300"
@@ -665,7 +664,7 @@ export default function CalendarioPage() {
                     key={p.id}
                     type="button"
                     onClick={() => { setPickId(p.id); setPickOwner(p.owner); }}
-                    data-cursor-label="Elegir"
+                    {...cursorIntentProps("open", "Elegir")}
                     className={`press flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
                       on
                         ? "border-nude/70 bg-nude/15 shadow-glow-nude"

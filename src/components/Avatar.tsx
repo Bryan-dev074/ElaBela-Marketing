@@ -1,6 +1,7 @@
 "use client";
 
 import { useProfiles } from "@/lib/profiles";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 
 /**
  * Team avatar: shows the profile photo when set, otherwise a deterministic
@@ -108,7 +109,7 @@ export function OwnerPicker({
             key={p.username}
             type="button"
             onClick={() => onChange(p.username)}
-            data-cursor-label={p.fullName || p.username}
+            {...cursorIntentProps("open", p.fullName || p.username)}
             className={`press flex items-center gap-2 rounded-xl border capitalize transition ${pad} ${
               on
                 ? "border-nude/60 bg-nude/15 text-white shadow-[0_0_18px_-6px_rgba(214,171,153,0.7)]"

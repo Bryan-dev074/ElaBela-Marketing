@@ -4,6 +4,7 @@ import React, { useEffect, useId, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import type { TaskState } from "@/lib/data";
+import { cursorIntentProps } from "@/lib/cursor-intent";
 import { DialogPortalHostContext } from "@/components/dialog-portal";
 import { containTabFocus, focusableElements } from "@/lib/focus-management";
 
@@ -124,8 +125,9 @@ export function stateLabel(state: TaskState) {
 
 /** Spread onto an element so the custom cursor tints + labels itself with the state. */
 export function stateCursorProps(state: TaskState): Record<string, string> {
-  const m = STATE_META[state];
-  return { "data-cursor-color": m.color, "data-cursor-label": m.label };
+  if (state === "doing") return cursorIntentProps("doing", stateLabel(state));
+  if (state === "done") return cursorIntentProps("complete", stateLabel(state));
+  return cursorIntentProps("open", stateLabel(state));
 }
 
 /** Three-pill selector to set a TaskState by hand (proyectos, guiones, modals). */
@@ -141,6 +143,7 @@ export function StateSelector({ value, onChange, size = "md" }: { value: TaskSta
             key={s}
             type="button"
             onClick={() => onChange(s)}
+            aria-pressed={active}
             {...stateCursorProps(s)}
             className={`press inline-flex items-center gap-1.5 rounded-full border font-medium transition ${pad} ${
               active ? m.pill + " shadow-[0_0_18px_-6px_currentColor]" : "border-white/10 text-[var(--faint)] hover:border-white/25 hover:text-white"
@@ -207,7 +210,7 @@ export function WeekdayPicker({ value, onChange }: { value: number[]; onChange: 
               type="button"
               title={WD_FULL[d]}
               onClick={() => toggle(d)}
-              data-cursor-label={WD_FULL[d]}
+              {...cursorIntentProps("open", WD_FULL[d])}
               className={`press flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold transition ${
                 on ? "border-nude/60 bg-nude/20 text-nude shadow-[0_0_14px_-4px_rgba(214,171,153,0.6)]" : "border-white/10 text-[var(--faint)] hover:border-white/30 hover:text-white"
               }`}
