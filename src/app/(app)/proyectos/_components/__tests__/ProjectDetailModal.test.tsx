@@ -129,17 +129,18 @@ describe("ProjectDetailModal", () => {
     expect(dialog.querySelector("[data-project-note]")).toBeInTheDocument();
   });
 
-  it("locks only the pending operation and keeps an inline error visible", () => {
+  it("locks every mutation control for the pending project and keeps an inline error visible", () => {
     renderDetail(project(), {
-      pendingOperation: { projectId: "project-1", kind: "step", stepIndex: 1 },
+      pendingOperation: { projectId: "project-1", kind: "step", operationId: 1, stepIndex: 1, sourceSection: "active" },
       error: "No se pudo actualizar el paso.",
     });
     const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
 
     expect(within(dialog).getByRole("button", { name: "Completar paso: Publicación final" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: "Marcar pendiente: Concepto visual" })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: "Listo" })).toBeEnabled();
-    expect(within(dialog).getByRole("button", { name: "Editar proyecto" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "Marcar pendiente: Concepto visual" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Listo" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Editar proyecto" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Completar proyecto" })).toBeDisabled();
     expect(within(dialog).getByRole("alert")).toHaveTextContent("No se pudo actualizar el paso.");
   });
 

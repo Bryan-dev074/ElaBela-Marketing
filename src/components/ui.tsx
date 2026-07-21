@@ -131,7 +131,7 @@ export function stateCursorProps(state: TaskState): Record<string, string> {
 }
 
 /** Three-pill selector to set a TaskState by hand (proyectos, guiones, modals). */
-export function StateSelector({ value, onChange, size = "md" }: { value: TaskState; onChange: (s: TaskState) => void; size?: "sm" | "md" }) {
+export function StateSelector({ value, onChange, size = "md", disabled = false }: { value: TaskState; onChange: (s: TaskState) => void; size?: "sm" | "md"; disabled?: boolean }) {
   const pad = size === "sm" ? "min-h-9 px-2.5 py-1 text-[10px]" : "min-h-11 px-3 py-1.5 text-xs";
   return (
     <div className="inline-flex flex-wrap gap-1.5">
@@ -142,10 +142,11 @@ export function StateSelector({ value, onChange, size = "md" }: { value: TaskSta
           <button
             key={s}
             type="button"
+            disabled={disabled}
             onClick={() => onChange(s)}
             aria-pressed={active}
             {...stateCursorProps(s)}
-            className={`press inline-flex items-center gap-1.5 rounded-full border font-medium transition ${pad} ${
+            className={`press inline-flex items-center gap-1.5 rounded-full border font-medium transition disabled:cursor-not-allowed disabled:opacity-55 ${pad} ${
               active ? m.pill + " shadow-[0_0_18px_-6px_currentColor]" : "border-white/10 text-[var(--faint)] hover:border-white/25 hover:text-white"
             }`}
           >

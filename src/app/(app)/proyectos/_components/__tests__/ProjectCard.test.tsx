@@ -108,12 +108,18 @@ describe("ProjectCard", () => {
     const callbacks = renderCard();
     const article = screen.getByRole("article", { name: "Campaña Glow" });
     const open = screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" });
+    const status = screen.getByRole("button", { name: "Cambiar estado de Campaña Glow" });
+    const step = screen.getByRole("button", { name: "Completar paso: Edición" });
 
     expect(article).toContainElement(open);
     expect(open.parentElement).toBe(article);
     expect(open.querySelector("button, a, input, select, textarea")).toBeNull();
     expect(open).toHaveAttribute("data-cursor", "open");
     expect(open).toHaveAttribute("data-cursor-color", "#d6ab99");
+    expect(status.parentElement).toHaveClass("pointer-events-none");
+    expect(status).toHaveClass("pointer-events-auto");
+    expect(step.closest("div[class*='z-20']")).toHaveClass("pointer-events-none");
+    expect(step).toHaveClass("pointer-events-auto");
 
     fireEvent.click(open);
     expect(callbacks.onOpen).toHaveBeenCalledOnce();
@@ -184,5 +190,17 @@ describe("ProjectCard", () => {
 
     expect(motionState.transitions).toContainEqual(expect.objectContaining({ duration: 0, delay: 0 }));
     expect(motionState.transitions.some((transition) => transition?.delay === 0.27)).toBe(false);
+  });
+
+  it("uses the same restrained CSS lift for hover and focus-within without motion transforms", () => {
+    renderCard();
+    const article = screen.getByRole("article", { name: "Campaña Glow" });
+
+    expect(article).toHaveClass(
+      "hover:-translate-y-[3px]",
+      "focus-within:-translate-y-[3px]",
+      "motion-reduce:hover:translate-y-0",
+      "motion-reduce:focus-within:translate-y-0",
+    );
   });
 });

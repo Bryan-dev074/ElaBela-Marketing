@@ -16,6 +16,14 @@ const addAsync = vi.fn();
 const removeAsync = vi.fn();
 let projects: Project[] = [];
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 const activeGlow = (): Project => ({
   id: "p1",
   name: "Campaña Glow",
@@ -168,6 +176,64 @@ describe("ProjectsPage", () => {
     await waitFor(() => expect(screen.getByRole("dialog", { name: "Campaña Glow" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Reabrir proyecto" })).toBeInTheDocument();
     expect(screen.getByText(/Completado el/i)).toBeInTheDocument();
+  });
+
+  it("keeps active completion semantics and blocks a second mutation during an optimistic completion", async () => {
+    const update = deferred<{ ok: true }>();
+    updateAsync.mockImplementationOnce((id: string, patch: Project) => {
+      projects = projects.map((item) => item.id === id ? { ...item, ...patch } : item);
+      return update.promise;
+    });
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Completar proyecto" }));
+
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(1));
+    expect(within(dialog).getByRole("button", { name: "Completando…" })).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "Reabrir proyecto" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Editar proyecto" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sin empezar" }));
+    expect(updateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps completed reopen semantics while its optimistic update is pending", async () => {
+    const update = deferred<{ ok: true }>();
+    projects = [completedGlow()];
+    updateAsync.mockImplementationOnce((id: string, patch: Project) => {
+      projects = projects.map((item) => item.id === id ? { ...item, ...patch } : item);
+      return update.promise;
+    });
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Completados/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Reabrir proyecto" }));
+
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(1));
+    expect(within(dialog).getByRole("button", { name: "Reabriendo…" })).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "Completar proyecto" })).not.toBeInTheDocument();
+  });
+
+  it("keeps last-step auto-completion in locked active semantics until its save resolves", async () => {
+    const update = deferred<{ ok: true }>();
+    updateAsync.mockImplementationOnce((id: string, patch: Project) => {
+      projects = projects.map((item) => item.id === id ? { ...item, ...patch } : item);
+      return update.promise;
+    });
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Completar paso: Diseñar piezas" }));
+
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(1));
+    expect(within(dialog).getByRole("button", { name: "Completar proyecto" })).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "Reabrir proyecto" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Completar proyecto" }));
+    expect(updateAsync).toHaveBeenCalledTimes(1);
   });
 
   it("completes with the authenticated actor and responsible snapshot", async () => {

@@ -54,10 +54,13 @@ export function ProjectDetailModal({
   onReopen: () => void;
 }): React.ReactNode {
   const { profiles } = useProfiles();
-  const section = project ? classifyProject(project) : null;
   const currentPending = Boolean(project && pendingOperation?.projectId === project.id);
+  const section = project
+    ? currentPending
+      ? pendingOperation?.sourceSection ?? classifyProject(project)
+      : classifyProject(project)
+    : null;
   const statusPending = Boolean(currentPending && pendingOperation?.kind === "status");
-  const savePending = Boolean(currentPending && pendingOperation?.kind === "save");
   const pendingStepIndex = currentPending && pendingOperation?.kind === "step"
     ? pendingOperation.stepIndex ?? null
     : null;
@@ -73,7 +76,7 @@ export function ProjectDetailModal({
           <Button
             type="button"
             variant="ghost"
-            disabled={savePending}
+            disabled={currentPending}
             onClick={onEdit}
             {...cursorIntentProps("edit")}
             className="min-h-11"
@@ -82,7 +85,7 @@ export function ProjectDetailModal({
           </Button>
           <Button
             type="button"
-            disabled={statusPending}
+            disabled={currentPending}
             onClick={() => onStatusChange("done")}
             {...cursorIntentProps("complete")}
             className="min-h-11"
@@ -94,7 +97,7 @@ export function ProjectDetailModal({
       ) : section === "completed" ? (
         <Button
           type="button"
-          disabled={statusPending}
+          disabled={currentPending}
           onClick={onReopen}
           {...cursorIntentProps("doing", "Reabrir")}
           className="min-h-11"
@@ -143,8 +146,8 @@ export function ProjectDetailModal({
               <ProjectProgress project={project} />
               <div>
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--faint)]">Estado del proyecto</p>
-                <fieldset disabled={statusPending || readOnly} className="m-0 min-w-0 border-0 p-0">
-                  <StateSelector value={project.status} onChange={onStatusChange} />
+                <fieldset disabled={currentPending || readOnly} className="m-0 min-w-0 border-0 p-0">
+                  <StateSelector value={project.status} onChange={onStatusChange} disabled={currentPending || readOnly} />
                 </fieldset>
               </div>
             </div>
@@ -160,6 +163,7 @@ export function ProjectDetailModal({
                 <ProjectStepList
                   project={project}
                   variant="detail"
+                  disabled={currentPending}
                   readOnly={readOnly}
                   pendingIndex={pendingStepIndex}
                   onToggle={section === "active" ? onStepChange : undefined}

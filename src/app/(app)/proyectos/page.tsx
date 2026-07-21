@@ -102,6 +102,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSequence = useRef(0);
 
   const active = projects.filter((project) => classifyProject(project) === "active");
   const completed = filterCompletedByResponsible(projects, completedResponsible || undefined);
@@ -121,16 +122,20 @@ export default function ProjectsPage() {
   const savingDraft = pendingOperation?.kind === "save" && pendingOperation.projectId === draftProjectId;
 
   function clearPending(operation: Exclude<ProjectPendingOperation, null>) {
-    setPendingOperation((current) => current?.projectId === operation.projectId
-      && current.kind === operation.kind
-      && current.stepIndex === operation.stepIndex
+    setPendingOperation((current) => current?.operationId === operation.operationId
       ? null
       : current);
   }
 
   async function persistStatus(project: Project, nextStatus: TaskState) {
     setError("");
-    const operation = { projectId: project.id, kind: "status" } as const;
+    const operation = {
+      projectId: project.id,
+      kind: "status",
+      operationId: ++pendingSequence.current,
+      sourceSection: classifyProject(project),
+      targetStatus: nextStatus,
+    } as const;
     setPendingOperation(operation);
     try {
       const transitioned = transitionProjectStatus(project, nextStatus, user.id, new Date());
@@ -152,7 +157,13 @@ export default function ProjectsPage() {
 
   async function persistStep(project: Project, index: number) {
     setError("");
-    const operation = { projectId: project.id, kind: "step", stepIndex: index } as const;
+    const operation = {
+      projectId: project.id,
+      kind: "step",
+      operationId: ++pendingSequence.current,
+      stepIndex: index,
+      sourceSection: classifyProject(project),
+    } as const;
     setPendingOperation(operation);
     try {
       const next = toggleProjectStep(project, index, user.id, new Date());
@@ -168,7 +179,17 @@ export default function ProjectsPage() {
   async function save() {
     if (!draft || !draft.name.trim()) return;
     setError("");
-    const operation = { projectId: draft.id || "new", kind: "save" } as const;
+    const existing = draft.id ? projects.find(({ id }) => id === draft.id) : undefined;
+    if (draft.id && !existing) {
+      setError("El proyecto ya no está disponible.");
+      return;
+    }
+    const operation = {
+      projectId: draft.id || "new",
+      kind: "save",
+      operationId: ++pendingSequence.current,
+      sourceSection: existing ? classifyProject(existing) : undefined,
+    } as const;
     setPendingOperation(operation);
     const additions = normalizeAdditionalResponsibles(draft.owner, draft.responsibleUsernames);
     const parsedSteps = draft.contentMode === "steps"
@@ -178,15 +199,14 @@ export default function ProjectsPage() {
       : [];
     try {
       if (draft.id) {
-        const existing = projects.find(({ id }) => id === draft.id);
-        if (!existing) throw new Error("El proyecto ya no está disponible.");
+        const current = existing!;
         const edited: Project = {
-          ...existing,
+          ...current,
           name: draft.name.trim(), owner: draft.owner, responsibleUsernames: additions,
           projectType: draft.projectType, priority: draft.priority, objective: draft.objective.trim() || undefined,
           startDate: draft.startDate || undefined, due: draft.due || undefined,
           contentMode: draft.contentMode, note: draft.note,
-          steps: draft.contentMode === "steps" ? mergeSteps(existing.steps, parsedSteps) : existing.steps,
+          steps: draft.contentMode === "steps" ? mergeSteps(current.steps, parsedSteps) : current.steps,
         };
         const persisted = transitionProjectStatus(edited, draft.status, user.id, new Date());
         const result = await updateAsync(draft.id, persisted);
@@ -224,7 +244,13 @@ export default function ProjectsPage() {
   }
 
   async function removeProject(id: string) {
-    const operation = { projectId: id, kind: "delete" } as const;
+    const project = projects.find((item) => item.id === id);
+    const operation = {
+      projectId: id,
+      kind: "delete",
+      operationId: ++pendingSequence.current,
+      sourceSection: project ? classifyProject(project) : undefined,
+    } as const;
     setPendingOperation(operation);
     setError("");
     const result = await removeAsync(id);

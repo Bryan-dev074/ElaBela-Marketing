@@ -69,7 +69,7 @@ export function ProjectStepList({
                   disabled={interactionDisabled}
                   onClick={() => onToggle?.(index)}
                   {...cursorProps}
-                  className={`relative z-10 flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full border transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`pointer-events-auto relative z-10 flex h-11 min-h-11 w-11 min-w-11 items-center justify-center rounded-full border transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
                     step.done
                       ? "border-emerald-300/35 bg-emerald-300/[0.09] text-emerald-300"
                       : "border-[#d6ab99]/30 bg-[#d6ab99]/[0.075] text-[#dec2ad] hover:border-[#d6ab99]/55 hover:bg-[#d6ab99]/[0.13]"
@@ -109,7 +109,7 @@ export function ProjectStepList({
           onClick={onOpen}
           disabled={!onOpen}
           {...(onOpen ? cursorIntentProps("open") : {})}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#d6ab99]/20 bg-[#d6ab99]/[0.025] px-3 text-xs font-medium text-[#dec2ad] transition-colors hover:border-[#d6ab99]/40 hover:bg-[#d6ab99]/[0.07] disabled:opacity-60"
+          className="pointer-events-auto flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#d6ab99]/20 bg-[#d6ab99]/[0.025] px-3 text-xs font-medium text-[#dec2ad] transition-colors hover:border-[#d6ab99]/40 hover:bg-[#d6ab99]/[0.07] disabled:opacity-60"
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
           +{remaining} pasos más
