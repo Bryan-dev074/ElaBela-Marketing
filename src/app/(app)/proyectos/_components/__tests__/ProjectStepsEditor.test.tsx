@@ -1,0 +1,101 @@
+import React, { useState } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Project } from "@/lib/data";
+import { ProjectStepsEditor } from "@/app/(app)/proyectos/_components/ProjectStepsEditor";
+
+let reducedMotion = false;
+
+vi.mock("framer-motion", async () => {
+  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion");
+  return { ...actual, useReducedMotion: () => reducedMotion };
+});
+
+function EditorHarness({ initial, disabled = false }: { initial: Project["steps"]; disabled?: boolean }) {
+  const [steps, setSteps] = useState(initial);
+  return <ProjectStepsEditor value={steps} onChange={setSteps} disabled={disabled} />;
+}
+
+describe("ProjectStepsEditor", () => {
+  beforeEach(() => {
+    reducedMotion = false;
+  });
+
+  it("renders the first blank route as Paso 01", () => {
+    render(<EditorHarness initial={[{ label: "", done: false }]} />);
+
+    expect(screen.getByText("Paso 01")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toBeInTheDocument();
+  });
+
+  it("adds and focuses Paso 02", async () => {
+    render(<EditorHarness initial={[{ label: "Preparar piezas", done: false }]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Añadir paso" }));
+
+    const secondStep = screen.getByRole("textbox", { name: "Paso 02" });
+    expect(secondStep).toBeInTheDocument();
+    await waitFor(() => expect(secondStep).toHaveFocus());
+  });
+
+  it("uses Enter on the last non-empty row to add and focus Paso 03", async () => {
+    render(<EditorHarness initial={[
+      { label: "Planificar", done: false },
+      { label: "Publicar", done: false },
+    ]} />);
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Paso 02" }), { key: "Enter" });
+
+    const thirdStep = screen.getByRole("textbox", { name: "Paso 03" });
+    expect(thirdStep).toBeInTheDocument();
+    await waitFor(() => expect(thirdStep).toHaveFocus());
+  });
+
+  it("deletes a middle row and renumbers the remaining route", async () => {
+    render(<EditorHarness initial={[
+      { label: "Planificar", done: false },
+      { label: "Diseñar", done: false },
+      { label: "Publicar", done: false },
+    ]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Paso 02" }));
+
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Paso 03" })).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "Paso 02" })).toHaveValue("Publicar");
+  });
+
+  it("keeps one blank row after deleting the last remaining row", async () => {
+    render(<EditorHarness initial={[{ label: "Planificar", done: false }]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Paso 01" }));
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Paso 01" })).toHaveValue(""));
+    expect(screen.queryByRole("textbox", { name: "Paso 02" })).not.toBeInTheDocument();
+  });
+
+  it("rejects edits and actions when disabled", () => {
+    const onChange = vi.fn();
+    render(<ProjectStepsEditor value={[{ label: "Planificar", done: false }]} onChange={onChange} disabled />);
+
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Añadir paso" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Eliminar Paso 01" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Añadir paso" }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("uses 44-pixel target utility classes for editor controls", () => {
+    render(<EditorHarness initial={[{ label: "Planificar", done: false }]} />);
+
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toHaveClass("min-h-11");
+    expect(screen.getByRole("button", { name: "Añadir paso" })).toHaveClass("min-h-11");
+    expect(screen.getByRole("button", { name: "Eliminar Paso 01" })).toHaveClass("h-11");
+  });
+
+  it("removes insertion translation and scale when reduced motion is preferred", () => {
+    reducedMotion = true;
+    const { container } = render(<EditorHarness initial={[{ label: "Planificar", done: false }]} />);
+
+    expect(container.querySelector("[data-motion='reduced']")).toBeInTheDocument();
+  });
+});

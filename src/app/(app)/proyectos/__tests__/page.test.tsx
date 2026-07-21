@@ -1,6 +1,6 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@/lib/data";
 import ProjectsPage from "@/app/(app)/proyectos/page";
 
@@ -86,6 +86,8 @@ vi.mock("@/components/Avatar", () => ({
 }));
 
 describe("ProjectsPage", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     projects = [activeGlow()];
     updateAsync.mockReset().mockResolvedValue({ ok: true });
@@ -152,5 +154,79 @@ describe("ProjectsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("sin conexión");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("opens a new project with Paso 01 instead of the newline steps textarea", () => {
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Nuevo proyecto/i }));
+
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toBeInTheDocument();
+    expect(screen.queryByText("Pasos (uno por línea)")).not.toBeInTheDocument();
+  });
+
+  it("saves entered structured rows with the authenticated user as owner", async () => {
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Nuevo proyecto/i }));
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Lanzamiento Glow" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Paso 01" }), { target: { value: "Preparar piezas" } });
+    fireEvent.click(screen.getByRole("button", { name: "Añadir paso" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Paso 02" }), { target: { value: "Publicar" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(addAsync).toHaveBeenCalledWith(expect.objectContaining({
+      owner: "bryan",
+      steps: [
+        { label: "Preparar piezas", done: false },
+        { label: "Publicar", done: false },
+      ],
+    })));
+  });
+
+  it("defaults the new project owner to the current username", () => {
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Nuevo proyecto/i }));
+
+    expect(screen.getByRole("button", { name: "bryan" })).toBeInTheDocument();
+  });
+
+  it("trims step labels while preserving a matching completed step", async () => {
+    projects = [{ ...activeGlow(), steps: [{ label: " Preparar piezas ", done: true }, { label: "Publicar", done: false }] }];
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Editar Campaña Glow/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledWith("p1", expect.objectContaining({
+      steps: [
+        { label: "Preparar piezas", done: true },
+        { label: "Publicar", done: false },
+      ],
+    })));
+  });
+
+  it("retains the structured draft after a failed save for retry", async () => {
+    addAsync.mockResolvedValueOnce({ ok: false, error: "sin conexión" });
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Nuevo proyecto/i }));
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Lanzamiento Glow" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Paso 01" }), { target: { value: "Preparar piezas" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("sin conexión");
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toHaveValue("Preparar piezas");
+  });
+
+  it("keeps the structured draft locked while a save is pending", async () => {
+    addAsync.mockImplementationOnce(() => new Promise(() => {}));
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Nuevo proyecto/i }));
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Lanzamiento Glow" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Nota" }));
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Nuevo proyecto/i })).toBeDisabled();
   });
 });

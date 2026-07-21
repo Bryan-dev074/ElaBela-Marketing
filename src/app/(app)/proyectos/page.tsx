@@ -14,6 +14,7 @@ import { cursorIntentProps } from "@/lib/cursor-intent";
 import { AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
 import { Markdown } from "@/components/Markdown";
 import { ProjectResponsiblePicker } from "@/components/ProjectResponsiblePicker";
+import { ProjectStepsEditor } from "@/app/(app)/proyectos/_components/ProjectStepsEditor";
 import {
   classifyProject, filterCompletedByResponsible, normalizeAdditionalResponsibles,
   toggleProjectStep, transitionProjectStatus,
@@ -83,10 +84,10 @@ type Draft = {
   id: string; name: string; owner: string; responsibleUsernames: string[];
   projectType: ProjectType; priority: ProjectPriority; objective: string;
   startDate: string; due: string; status: TaskState;
-  contentMode: "steps" | "note"; steps: string; note: string;
+  contentMode: "steps" | "note"; steps: Project["steps"]; note: string;
 };
 
-const toDraft = (project?: Project): Draft => project ? {
+const toDraft = (project?: Project, defaultOwner = ""): Draft => project ? {
   id: project.id,
   name: project.name,
   owner: project.owner,
@@ -98,17 +99,17 @@ const toDraft = (project?: Project): Draft => project ? {
   due: project.due ?? "",
   status: project.status,
   contentMode: project.contentMode,
-  steps: project.steps.map(({ label }) => label).join("\n"),
+  steps: project.steps.map((step) => ({ ...step })),
   note: project.note ?? "",
 } : {
-  id: "", name: "", owner: "cielo", responsibleUsernames: [],
+  id: "", name: "", owner: defaultOwner, responsibleUsernames: [],
   projectType: "other", priority: "normal", objective: "", startDate: today(), due: "",
-  status: "todo", contentMode: "steps", steps: "", note: "",
+  status: "todo", contentMode: "steps", steps: [{ label: "", done: false }], note: "",
 };
 
 const mergeSteps = (oldSteps: Project["steps"], nextSteps: Project["steps"]) => nextSteps.map((step) => ({
   ...step,
-  done: oldSteps.find(({ label }) => label === step.label)?.done ?? false,
+  done: oldSteps.find(({ label }) => label.trim() === step.label)?.done ?? false,
 }));
 
 export default function ProjectsPage() {
@@ -181,7 +182,9 @@ export default function ProjectsPage() {
     setPendingId(draft.id || "new");
     const additions = normalizeAdditionalResponsibles(draft.owner, draft.responsibleUsernames);
     const parsedSteps = draft.contentMode === "steps"
-      ? draft.steps.split("\n").map((label) => label.trim()).filter(Boolean).map((label) => ({ label, done: false }))
+      ? draft.steps
+        .map((step) => ({ label: step.label.trim(), done: false }))
+        .filter((step) => Boolean(step.label))
       : [];
     try {
       if (draft.id) {
@@ -249,7 +252,7 @@ export default function ProjectsPage() {
         eyebrow="Iniciativas"
         title="Proyectos"
         description="Gestioná iniciativas activas, consultá los trabajos completados y conservá el historial anterior."
-        action={<Button onClick={() => { setError(""); setDraft(toDraft()); }}><Plus className="h-4 w-4" /> Nuevo proyecto</Button>}
+        action={<Button disabled={!!pendingId} onClick={() => { setError(""); setDraft(toDraft(undefined, user.username)); }}><Plus className="h-4 w-4" /> Nuevo proyecto</Button>}
       />
 
       {error && !draft && <p role="alert" className="mb-5 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
@@ -448,14 +451,20 @@ export default function ProjectsPage() {
               <Field label="Fecha de inicio"><Input disabled={!!pendingId} type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></Field>
               <Field label="Fecha de entrega"><Input disabled={!!pendingId} type="date" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></Field>
             </div>
-            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Líder</span><OwnerPicker value={draft.owner} onChange={(owner) => setDraft({ ...draft, owner, responsibleUsernames: normalizeAdditionalResponsibles(owner, draft.responsibleUsernames) })} /></div>
+            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Líder</span><OwnerPicker value={draft.owner} onChange={(owner) => { if (!pendingId) setDraft({ ...draft, owner, responsibleUsernames: normalizeAdditionalResponsibles(owner, draft.responsibleUsernames) }); }} /></div>
             <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsables adicionales</span><ProjectResponsiblePicker disabled={!!pendingId} owner={draft.owner} value={draft.responsibleUsernames} onChange={(responsibleUsernames) => setDraft({ ...draft, responsibleUsernames })} /></div>
-            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span><StateSelector value={draft.status} onChange={(status) => setDraft({ ...draft, status })} /></div>
+            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span><StateSelector value={draft.status} onChange={(status) => { if (!pendingId) setDraft({ ...draft, status }); }} /></div>
             <div>
               <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Contenido</span>
-              <Segmented value={draft.contentMode} onChange={(contentMode) => setDraft({ ...draft, contentMode })} options={[{ value: "steps", label: <><ListChecks className="h-3.5 w-3.5" /> Pasos</> }, { value: "note", label: <><FileText className="h-3.5 w-3.5" /> Nota</> }]} />
+              <Segmented value={draft.contentMode} onChange={(contentMode) => { if (!pendingId) setDraft({ ...draft, contentMode }); }} options={[{ value: "steps", label: <><ListChecks className="h-3.5 w-3.5" /> Pasos</> }, { value: "note", label: <><FileText className="h-3.5 w-3.5" /> Nota</> }]} />
             </div>
-            {draft.contentMode === "steps" ? <Field label="Pasos (uno por línea)"><Textarea disabled={!!pendingId} rows={5} value={draft.steps} onChange={(event) => setDraft({ ...draft, steps: event.target.value })} /></Field> : <Field label="Nota"><Textarea disabled={!!pendingId} rows={8} value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>}
+            {draft.contentMode === "steps" ? (
+              <ProjectStepsEditor
+                value={draft.steps}
+                onChange={(steps) => setDraft({ ...draft, steps })}
+                disabled={!!pendingId}
+              />
+            ) : <Field label="Nota"><Textarea disabled={!!pendingId} rows={8} value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>}
           </div>
         )}
       </Modal>
