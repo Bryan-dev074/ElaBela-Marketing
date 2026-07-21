@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { resolveCursorTarget } from "@/lib/cursor-intent";
 
 /**
  * Premium custom cursor: a precise dot + a ring that grows and turns nude over
@@ -9,8 +10,8 @@ import { useEffect, useRef } from "react";
  * lerp), so it stays fluid even on slow machines. Fine-pointer devices only;
  * inputs keep the native text caret so typing stays natural.
  *
- * Elements can tint the ring and attach a floating label via data attributes:
- *   <div data-cursor-color="#3b82f6" data-cursor-label="En curso">…</div>
+ * Actionable elements describe their semantics with data-cursor. Legacy labels
+ * and colors remain supported when they belong to the active action itself.
  */
 export default function CustomCursor() {
   const dotRef = useRef<HTMLDivElement>(null);
@@ -32,25 +33,18 @@ export default function CustomCursor() {
       if (ring.dataset.visible !== "1") { ring.dataset.visible = "1"; dot.dataset.visible = "1"; }
     };
     const over = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      const t = target?.closest?.('a,button,input,select,textarea,label,[role="button"],[data-cursor],[data-cursor-label]');
-      ring.dataset.hover = t ? "1" : "0";
+      const target = e.target instanceof Element ? e.target : null;
+      const resolved = resolveCursorTarget(target);
+      ring.dataset.hover = resolved.interactive ? "1" : "0";
 
-      // Contextual tint + label bubble (inherited from the nearest annotated ancestor)
-      const meta = target?.closest?.("[data-cursor-label],[data-cursor-color]") as HTMLElement | null;
-      const color = meta?.getAttribute("data-cursor-color") || "";
-      const label = meta?.getAttribute("data-cursor-label") || "";
-      if (color) {
-        ring.style.setProperty("--cursor-accent", color);
-        tag.style.setProperty("--cursor-accent", color);
+      if (resolved.interactive) {
+        ring.style.setProperty("--cursor-accent", resolved.color);
+        tag.style.setProperty("--cursor-accent", resolved.color);
+        tag.textContent = resolved.label;
+        tag.dataset.visible = "1";
       } else {
         ring.style.removeProperty("--cursor-accent");
         tag.style.removeProperty("--cursor-accent");
-      }
-      if (label) {
-        tag.textContent = label;
-        tag.dataset.visible = "1";
-      } else {
         tag.dataset.visible = "0";
       }
     };

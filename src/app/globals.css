@@ -187,9 +187,19 @@
   /* ---- Custom cursor ---- */
   body.has-custom-cursor,
   body.has-custom-cursor * { cursor: none !important; }
-  body.has-custom-cursor input,
+  body.has-custom-cursor input:not([type]),
+  body.has-custom-cursor input[type="text" i],
+  body.has-custom-cursor input[type="search" i],
+  body.has-custom-cursor input[type="email" i],
+  body.has-custom-cursor input[type="password" i],
+  body.has-custom-cursor input[type="url" i],
+  body.has-custom-cursor input[type="tel" i],
+  body.has-custom-cursor input[type="number" i],
   body.has-custom-cursor textarea,
-  body.has-custom-cursor [contenteditable="true"] { cursor: text !important; }
+  body.has-custom-cursor [contenteditable]:not([contenteditable="false"]) { cursor: text !important; }
+
+  body:not(.has-custom-cursor) [data-cursor="drag"] { cursor: grab; }
+  body:not(.has-custom-cursor) [data-cursor="drag"]:active { cursor: grabbing; }
 
   .cursor-dot {
     position: fixed; left: 0; top: 0; width: 6px; height: 6px; margin: -3px 0 0 -3px;
