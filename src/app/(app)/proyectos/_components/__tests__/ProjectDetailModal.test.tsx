@@ -144,6 +144,22 @@ describe("ProjectDetailModal", () => {
     expect(within(dialog).getByRole("alert")).toHaveTextContent("No se pudo actualizar el paso.");
   });
 
+  it.each(["todo", "doing"] as const)("uses a neutral saving label for a pending %s status change", (targetStatus) => {
+    renderDetail(project(), {
+      pendingOperation: {
+        projectId: "project-1",
+        kind: "status",
+        operationId: 1,
+        sourceSection: "active",
+        targetStatus,
+      },
+    });
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+
+    expect(within(dialog).getByRole("button", { name: "Guardando estado…" })).toBeDisabled();
+    expect(within(dialog).queryByRole("button", { name: "Completando…" })).not.toBeInTheDocument();
+  });
+
   it("uses a responsive one-column structure that cannot overflow horizontally", () => {
     renderDetail();
     const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });

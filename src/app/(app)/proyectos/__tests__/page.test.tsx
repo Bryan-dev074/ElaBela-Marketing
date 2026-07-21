@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@/lib/data";
 import ProjectsPage from "@/app/(app)/proyectos/page";
@@ -60,6 +60,12 @@ const completedElizabeth = (): Project => ({
   status: "done",
   completedAt: "2026-07-18T15:00:00.000Z",
   completedBy: "00000000-0000-4000-8000-000000000002",
+});
+
+const activeSol = (): Project => ({
+  ...activeGlow(),
+  id: "p2",
+  name: "Campaña Sol",
 });
 
 vi.mock("@/lib/db", () => ({
@@ -234,6 +240,34 @@ describe("ProjectsPage", () => {
     expect(within(dialog).queryByRole("button", { name: "Reabrir proyecto" })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Completar proyecto" }));
     expect(updateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps A locked when B resolves while both project saves are pending", async () => {
+    const first = deferred<{ ok: true }>();
+    const second = deferred<{ ok: true }>();
+    projects = [activeGlow(), activeSol()];
+    updateAsync.mockImplementation((id: string) => id === "p1" ? first.promise : second.promise);
+    render(<ProjectsPage />);
+
+    const cardA = screen.getByRole("article", { name: "Campaña Glow" });
+    fireEvent.click(within(cardA).getByRole("button", { name: "Cambiar estado de Campaña Glow" }));
+    fireEvent.click(within(cardA).getByRole("button", { name: "Sin empezar" }));
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(1));
+
+    const cardB = screen.getByRole("article", { name: "Campaña Sol" });
+    fireEvent.click(within(cardB).getByRole("button", { name: "Cambiar estado de Campaña Sol" }));
+    fireEvent.click(within(cardB).getByRole("button", { name: "Sin empezar" }));
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      second.resolve({ ok: true });
+      await second.promise;
+    });
+
+    const statusA = within(cardA).getByRole("button", { name: "Cambiar estado de Campaña Glow" });
+    expect(statusA).toBeDisabled();
+    fireEvent.click(statusA);
+    expect(updateAsync).toHaveBeenCalledTimes(2);
   });
 
   it("completes with the authenticated actor and responsible snapshot", async () => {

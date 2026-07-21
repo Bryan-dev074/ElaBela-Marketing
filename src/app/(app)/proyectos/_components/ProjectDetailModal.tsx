@@ -61,6 +61,7 @@ export function ProjectDetailModal({
       : classifyProject(project)
     : null;
   const statusPending = Boolean(currentPending && pendingOperation?.kind === "status");
+  const completing = Boolean(statusPending && pendingOperation?.targetStatus === "done");
   const pendingStepIndex = currentPending && pendingOperation?.kind === "step"
     ? pendingOperation.stepIndex ?? null
     : null;
@@ -91,7 +92,7 @@ export function ProjectDetailModal({
             className="min-h-11"
           >
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            {statusPending ? "Completando…" : "Completar proyecto"}
+            {completing ? "Completando…" : statusPending ? "Guardando estado…" : "Completar proyecto"}
           </Button>
         </>
       ) : section === "completed" ? (

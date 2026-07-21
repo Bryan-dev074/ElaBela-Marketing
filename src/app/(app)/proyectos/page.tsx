@@ -18,7 +18,7 @@ import {
   PROJECT_PRIORITIES, PROJECT_TYPES,
 } from "@/app/(app)/proyectos/_components/project-meta";
 import type {
-  ProjectPendingOperation, ProjectSection,
+  ProjectPendingOperation, ProjectPendingOperations, ProjectSection,
 } from "@/app/(app)/proyectos/_components/project-view-types";
 import {
   classifyProject, filterCompletedByResponsible, normalizeAdditionalResponsibles,
@@ -98,7 +98,7 @@ export default function ProjectsPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [statusProjectId, setStatusProjectId] = useState<string | null>(null);
-  const [pendingOperation, setPendingOperation] = useState<ProjectPendingOperation>(null);
+  const [pendingOperations, setPendingOperations] = useState<ProjectPendingOperations>({});
   const [error, setError] = useState("");
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,12 +119,18 @@ export default function ProjectsPage() {
     ? Math.round((allSteps.filter(({ done }) => done).length / allSteps.length) * 100)
     : 0;
   const draftProjectId = draft?.id || "new";
-  const savingDraft = pendingOperation?.kind === "save" && pendingOperation.projectId === draftProjectId;
+  const savingDraft = pendingOperations[draftProjectId]?.kind === "save";
+
+  function beginPending(operation: Exclude<ProjectPendingOperation, null>) {
+    setPendingOperations((current) => ({ ...current, [operation.projectId]: operation }));
+  }
 
   function clearPending(operation: Exclude<ProjectPendingOperation, null>) {
-    setPendingOperation((current) => current?.operationId === operation.operationId
-      ? null
-      : current);
+    setPendingOperations((current) => {
+      if (current[operation.projectId]?.operationId !== operation.operationId) return current;
+      const { [operation.projectId]: _cleared, ...remaining } = current;
+      return remaining;
+    });
   }
 
   async function persistStatus(project: Project, nextStatus: TaskState) {
@@ -136,7 +142,7 @@ export default function ProjectsPage() {
       sourceSection: classifyProject(project),
       targetStatus: nextStatus,
     } as const;
-    setPendingOperation(operation);
+    beginPending(operation);
     try {
       const transitioned = transitionProjectStatus(project, nextStatus, user.id, new Date());
       const patch = project.status === "done" && nextStatus !== "done"
@@ -164,7 +170,7 @@ export default function ProjectsPage() {
       stepIndex: index,
       sourceSection: classifyProject(project),
     } as const;
-    setPendingOperation(operation);
+    beginPending(operation);
     try {
       const next = toggleProjectStep(project, index, user.id, new Date());
       const result = await updateAsync(project.id, next);
@@ -190,7 +196,7 @@ export default function ProjectsPage() {
       operationId: ++pendingSequence.current,
       sourceSection: existing ? classifyProject(existing) : undefined,
     } as const;
-    setPendingOperation(operation);
+    beginPending(operation);
     const additions = normalizeAdditionalResponsibles(draft.owner, draft.responsibleUsernames);
     const parsedSteps = draft.contentMode === "steps"
       ? draft.steps
@@ -251,7 +257,7 @@ export default function ProjectsPage() {
       operationId: ++pendingSequence.current,
       sourceSection: project ? classifyProject(project) : undefined,
     } as const;
-    setPendingOperation(operation);
+    beginPending(operation);
     setError("");
     const result = await removeAsync(id);
     clearPending(operation);
@@ -269,7 +275,7 @@ export default function ProjectsPage() {
         eyebrow="Iniciativas"
         title="Proyectos"
         description="Gestioná iniciativas activas, consultá los trabajos completados y conservá el historial anterior."
-        action={<Button disabled={pendingOperation?.kind === "save"} onClick={() => { setError(""); setDraft(toDraft(undefined, user.username)); }}><Plus className="h-4 w-4" /> Nuevo proyecto</Button>}
+        action={<Button disabled={pendingOperations.new?.kind === "save"} onClick={() => { setError(""); setDraft(toDraft(undefined, user.username)); }}><Plus className="h-4 w-4" /> Nuevo proyecto</Button>}
       />
 
       {error && !draft && !open && <p role="alert" className="mb-5 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
@@ -340,7 +346,7 @@ export default function ProjectsPage() {
             project={project}
             section={tab}
             index={index}
-            pendingOperation={pendingOperation}
+            pendingOperation={pendingOperations[project.id] ?? null}
             statusMenuOpen={statusProjectId === project.id}
             deleteConfirmOpen={confirmDel === project.id}
             onOpen={() => { setError(""); setOpenId(project.id); }}
@@ -360,7 +366,7 @@ export default function ProjectsPage() {
 
       <ProjectDetailModal
         project={open}
-        pendingOperation={pendingOperation}
+        pendingOperation={open ? pendingOperations[open.id] ?? null : null}
         error={open ? error : ""}
         onClose={() => setOpenId(null)}
         onStatusChange={(status) => { if (open) void persistStatus(open, status); }}

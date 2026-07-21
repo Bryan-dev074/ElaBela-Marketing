@@ -11,3 +11,5 @@ export type ProjectPendingOperation = {
   sourceSection?: DomainProjectSection;
   targetStatus?: TaskState;
 } | null;
+
+export type ProjectPendingOperations = Partial<Record<string, Exclude<ProjectPendingOperation, null>>>;
