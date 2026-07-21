@@ -119,7 +119,7 @@ export function ProjectCard({
           transition={reducedMotion
             ? { duration: 0 }
             : { duration: 3.2, ease: "easeInOut", repeat: Infinity }}
-          className="pointer-events-none absolute -inset-4 z-0 rounded-[2rem] bg-blue-500/15 blur-2xl"
+          className="pointer-events-none absolute -inset-4 z-0 rounded-[2rem] bg-[radial-gradient(circle_at_center,rgba(96,165,250,0.24),transparent_70%)]"
         />
       ) : null}
 

@@ -299,8 +299,11 @@ describe("ProjectCard", () => {
 
     expect(screen.getByRole("button", { name: "Cambiar estado de Campaña Glow" }))
       .toHaveClass("border-blue-400/40", "bg-blue-500/15", "text-blue-200");
-    expect(document.querySelector("[data-project-doing-glow]"))
-      .toBeInTheDocument();
+    const article = screen.getByRole("article", { name: "Campaña Glow" });
+    const glow = document.querySelector("[data-project-doing-glow]");
+    expect(glow).toHaveClass("bg-[radial-gradient(circle_at_center,rgba(96,165,250,0.24),transparent_70%)]");
+    expect(glow?.parentElement).toBe(article);
+    expect(article).toHaveClass("overflow-hidden");
   });
 
   it("keeps non-doing cards free of the blue breathing treatment", () => {
@@ -308,6 +311,45 @@ describe("ProjectCard", () => {
 
     expect(document.querySelector("[data-project-doing-glow]"))
       .not.toBeInTheDocument();
+  });
+
+  it.each(["previous", "completed"] as const)("keeps a doing project in %s free of the blue breathing treatment", (section) => {
+    renderCard({
+      section,
+      value: project({
+        completedAt: section === "completed" ? "2026-07-19T15:00:00.000Z" : undefined,
+        completedBy: section === "completed" ? "user-1" : undefined,
+        completedResponsibleUsernames: section === "completed" ? ["bryan", "cielo"] : undefined,
+      }),
+    });
+
+    expect(document.querySelector("[data-project-doing-glow]")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cambiar estado de Campaña Glow" })).not.toBeInTheDocument();
+  });
+
+  it("uses the full breathing animation for an active doing project", () => {
+    renderCard();
+
+    const animationIndex = motionState.animations.findIndex((animation) => Array.isArray(animation?.opacity));
+    expect(motionState.animations[animationIndex]).toEqual({
+      opacity: [0.12, 0.26, 0.12],
+      scale: [0.96, 1.04, 0.96],
+    });
+    expect(motionState.transitions[animationIndex]).toEqual({
+      duration: 3.2,
+      ease: "easeInOut",
+      repeat: Infinity,
+    });
+  });
+
+  it("keeps the active doing glow static with reduced motion", () => {
+    motionState.reduced = true;
+    renderCard();
+
+    const animationIndex = motionState.animations.findIndex((animation) => animation?.opacity === 0.18 && animation.scale === 1);
+    expect(motionState.animations[animationIndex]).toEqual({ opacity: 0.18, scale: 1 });
+    expect(motionState.transitions[animationIndex]).toEqual({ duration: 0 });
+    expect(motionState.transitions[animationIndex]).not.toHaveProperty("repeat");
   });
 
   it("removes card movement and caps entrance delay under reduced motion", () => {
