@@ -4,6 +4,14 @@ import { describe, expect, it } from "vitest";
 
 const css = fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "utf8");
 
+describe("shared field accessibility", () => {
+  it("keeps project editor fields at least 44 pixels tall", () => {
+    const rule = css.match(/\.field\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    expect(rule).toMatch(/min-height:\s*2\.75rem/);
+  });
+});
+
 describe("shared reduced-motion CSS", () => {
   it("keeps the card sheen transition at or below 300 ms", () => {
     const rule = css.match(/\.card-sheen::after\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";

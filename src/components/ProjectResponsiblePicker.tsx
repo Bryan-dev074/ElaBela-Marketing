@@ -32,7 +32,7 @@ export function ProjectResponsiblePicker({ owner, value, onChange, disabled = fa
               onChange(normalizeAdditionalResponsibles(owner, next));
             }}
             {...cursorIntentProps("open", profile.fullName || profile.username)}
-            className={`press flex h-9 items-center gap-2 rounded-xl border px-3 text-sm capitalize transition ${
+            className={`press flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm capitalize transition ${
               pressed
                 ? "border-nude/60 bg-nude/15 text-white shadow-[0_0_18px_-6px_rgba(214,171,153,0.7)]"
                 : "border-white/10 text-[var(--muted)] hover:border-white/25 hover:text-white"

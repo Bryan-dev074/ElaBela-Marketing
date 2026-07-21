@@ -26,4 +26,12 @@ describe("ProjectResponsiblePicker", () => {
     fireEvent.click(screen.getByRole("button", { name: /cielo/i }));
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
+
+  it("keeps every additional-responsible option at least 44 pixels tall", () => {
+    render(<ProjectResponsiblePicker owner="bryan" value={[]} onChange={vi.fn()} />);
+
+    for (const option of screen.getAllByRole("button")) {
+      expect(option).toHaveClass("min-h-11");
+    }
+  });
 });

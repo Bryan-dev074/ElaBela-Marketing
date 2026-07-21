@@ -99,7 +99,7 @@ export function OwnerPicker({
   size?: "sm" | "md";
 }) {
   const { profiles } = useProfiles();
-  const pad = size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3 text-sm";
+  const pad = size === "sm" ? "min-h-11 px-2.5 text-xs" : "min-h-11 px-3 text-sm";
   return (
     <div className="flex flex-wrap gap-2">
       {profiles.map((p) => {
@@ -108,6 +108,7 @@ export function OwnerPicker({
           <button
             key={p.username}
             type="button"
+            aria-pressed={on}
             onClick={() => onChange(p.username)}
             {...cursorIntentProps("open", p.fullName || p.username)}
             className={`press flex items-center gap-2 rounded-xl border capitalize transition ${pad} ${
