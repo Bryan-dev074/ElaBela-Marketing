@@ -126,7 +126,7 @@ describe("ProjectStepsEditor", () => {
 
     const field = screen.getByRole("textbox", { name: "Paso 01" });
     expect(field).toHaveClass("text-base", "sm:text-sm");
-    expect(field).toHaveAttribute("placeholder", "Describí este paso…");
+    expect(field).toHaveAttribute("placeholder", "Ej.: Diseñar las piezas…");
   });
 
   it("removes insertion translation and scale when reduced motion is preferred", () => {
