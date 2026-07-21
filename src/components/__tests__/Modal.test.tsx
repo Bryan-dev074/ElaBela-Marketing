@@ -125,6 +125,12 @@ describe("Modal", () => {
     expect(dialog.querySelector(".max-h-\\[calc\\(100dvh-9rem\\)\\]")).toBeInTheDocument();
   });
 
+  it("gives the close action a 44-pixel target", () => {
+    render(<Modal open onClose={vi.fn()} title="Modal accesible">Contenido</Modal>);
+
+    expect(screen.getByRole("button", { name: "Cerrar" })).toHaveClass("min-h-11", "min-w-11");
+  });
+
   it("associates its title and moves focus into the dialog", () => {
     render(<ModalHarness />);
     const trigger = screen.getByRole("button", { name: "Abrir modal" });

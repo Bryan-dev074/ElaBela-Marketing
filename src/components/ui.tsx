@@ -21,11 +21,12 @@ export function PageHeader({
   description?: string;
   action?: React.ReactNode;
 }) {
+  const reducedMotion = useReducedMotion();
   return (
     <motion.header
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+      initial={reducedMotion ? false : { opacity: 0, y: 14 }}
+      animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}
       className="mb-8 flex flex-wrap items-end justify-between gap-4"
     >
       <div>
@@ -49,12 +50,14 @@ export function Reveal({
   delay?: number;
   className?: string;
 }) {
+  const reducedMotion = useReducedMotion();
+  const resolvedDelay = reducedMotion ? 0 : Math.min(Math.max(delay, 0), 0.06);
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={reducedMotion ? false : { opacity: 0, y: 14 }}
+      whileInView={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
-      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay }}
+      transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1], delay: resolvedDelay }}
       className={className}
     >
       {children}
@@ -178,8 +181,9 @@ export function Segmented<T extends string>({
         <button
           key={o.value}
           type="button"
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`press flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition ${
+          className={`press flex min-h-11 min-w-11 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition ${
             value === o.value ? "bg-white text-black shadow-[0_4px_18px_-6px_rgba(255,255,255,0.4)]" : "text-[var(--muted)] hover:text-white"
           }`}
         >
@@ -300,7 +304,7 @@ export function Button({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition active:scale-[0.98] disabled:opacity-50";
+    "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition active:scale-[0.98] motion-reduce:active:transform-none disabled:opacity-50";
   const variants: Record<ButtonVariant, string> = {
     primary: "bg-white text-black hover:bg-zinc-200 shadow-[0_8px_30px_-8px_rgba(255,255,255,0.35)]",
     ghost: "border border-[var(--border)] text-[var(--muted)] hover:text-white hover:border-[var(--border-strong)]",
@@ -444,7 +448,7 @@ export function Modal({
                     <h2 id={resolvedTitleId} className="text-lg font-semibold text-white">{title}</h2>
                     {description ? <p id={generatedDescriptionId} className="mt-0.5 text-xs text-[var(--muted)]">{description}</p> : null}
                   </div>
-                  <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[var(--muted)] transition hover:text-white" aria-label="Cerrar">
+                  <button type="button" onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--muted)] transition hover:text-white" aria-label="Cerrar">
                     <X className="h-5 w-5" />
                   </button>
                 </div>

@@ -116,7 +116,9 @@ export default function ProjectsPage() {
     ...projects.flatMap(({ completedResponsibleUsernames }) => completedResponsibleUsernames ?? []),
   ].filter(Boolean))].sort();
   const profileName = new Map(profiles.map(({ username, fullName }) => [username, fullName]));
-  const allSteps = active.flatMap(({ steps }) => steps);
+  const allSteps = active
+    .filter(({ contentMode }) => contentMode === "steps")
+    .flatMap(({ steps }) => steps);
   const globalPct = allSteps.length
     ? Math.round((allSteps.filter(({ done }) => done).length / allSteps.length) * 100)
     : 0;

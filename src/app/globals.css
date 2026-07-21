@@ -276,7 +276,7 @@
     content: ""; position: absolute; top: -120%; left: -40%; width: 40%; height: 340%;
     transform: rotate(22deg) translateX(-260%);
     background: linear-gradient(90deg, transparent, rgba(255,255,255,0.055), transparent);
-    pointer-events: none; transition: transform 0.85s cubic-bezier(0.16,1,0.3,1);
+    pointer-events: none; transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
   }
   .card-sheen:hover::after { transform: rotate(22deg) translateX(460%); }
 
@@ -361,4 +361,11 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+  .card-sheen::after {
+    content: none;
+    transform: none;
+    transition: none;
+  }
+  .press { transition: none; }
+  .press:active { transform: none; }
 }

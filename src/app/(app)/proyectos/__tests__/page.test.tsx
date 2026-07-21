@@ -164,6 +164,24 @@ describe("ProjectsPage", () => {
     expect(motionState.transitions.every((transition) => transition?.duration === 0)).toBe(true);
   });
 
+  it("excludes hidden steps from note projects in the global percentage", () => {
+    projects = [
+      activeGlow(),
+      {
+        ...activeGlow(),
+        id: "note-project",
+        name: "Brief editorial",
+        contentMode: "note",
+        note: "Ideas para la campaña",
+        steps: [{ label: "Paso legado oculto", done: true }],
+      },
+    ];
+
+    render(<ProjectsPage />);
+
+    expect(screen.getByRole("img", { name: "Progreso 0%" })).toBeInTheDocument();
+  });
+
   it("opens the integrated Project Studio from the card surface", () => {
     render(<ProjectsPage />);
 
