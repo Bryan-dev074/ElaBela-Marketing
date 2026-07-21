@@ -3,24 +3,29 @@
 import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  CalendarPlus, CheckCircle2, Circle, Clock, FileText, FolderKanban,
-  ListChecks, Pencil, Plus, RotateCcw, Trash2,
+  FileText, FolderKanban, ListChecks, Plus,
 } from "lucide-react";
 import {
   Button, EmptyState, Field, Input, Modal, PageHeader, Reveal, Segmented,
-  Select, StateSelector, Textarea, stateLabel,
+  Select, StateSelector, Textarea,
 } from "@/components/ui";
-import { cursorIntentProps } from "@/lib/cursor-intent";
-import { AvatarChip, AvatarStack, OwnerPicker } from "@/components/Avatar";
-import { Markdown } from "@/components/Markdown";
+import { OwnerPicker } from "@/components/Avatar";
 import { ProjectResponsiblePicker } from "@/components/ProjectResponsiblePicker";
+import { ProjectCard } from "@/app/(app)/proyectos/_components/ProjectCard";
+import { ProjectDetailModal } from "@/app/(app)/proyectos/_components/ProjectDetailModal";
 import { ProjectStepsEditor } from "@/app/(app)/proyectos/_components/ProjectStepsEditor";
+import {
+  PROJECT_PRIORITIES, PROJECT_TYPES,
+} from "@/app/(app)/proyectos/_components/project-meta";
+import type {
+  ProjectPendingOperation, ProjectSection,
+} from "@/app/(app)/proyectos/_components/project-view-types";
 import {
   classifyProject, filterCompletedByResponsible, normalizeAdditionalResponsibles,
   toggleProjectStep, transitionProjectStatus,
 } from "@/lib/projects";
 import {
-  fmtShortDate, type Project, type ProjectPriority, type ProjectType, type TaskState,
+  type Project, type ProjectPriority, type ProjectType, type TaskState,
 } from "@/lib/data";
 import { useProjects } from "@/lib/db";
 import { useProfiles } from "@/lib/profiles";
@@ -28,35 +33,7 @@ import { useUser } from "@/lib/user-context";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-const projectPct = (project: Project) => project.steps.length
-  ? Math.round((project.steps.filter(({ done }) => done).length / project.steps.length) * 100)
-  : project.status === "done" ? 100 : 0;
-
-const PROJECT_TYPES: Array<{ value: ProjectType; label: string }> = [
-  { value: "campaign", label: "Campaña" },
-  { value: "launch", label: "Lanzamiento" },
-  { value: "content", label: "Contenido" },
-  { value: "brand-design", label: "Marca y diseño" },
-  { value: "web-ecommerce", label: "Web / e-commerce" },
-  { value: "event", label: "Evento" },
-  { value: "crm", label: "CRM" },
-  { value: "operations", label: "Operaciones" },
-  { value: "other", label: "Otro" },
-];
-
-const PRIORITIES: Array<{ value: ProjectPriority; label: string }> = [
-  { value: "low", label: "Baja" },
-  { value: "normal", label: "Normal" },
-  { value: "high", label: "Alta" },
-  { value: "urgent", label: "Urgente" },
-];
-
-const typeLabel = (type: ProjectType) => PROJECT_TYPES.find(({ value }) => value === type)?.label ?? type;
-const priorityLabel = (priority: ProjectPriority) => PRIORITIES.find(({ value }) => value === priority)?.label ?? priority;
 const displayUsername = (username: string) => username.charAt(0).toUpperCase() + username.slice(1);
-const completedDate = (value?: string) => value
-  ? new Date(value).toLocaleDateString("es-PY", { day: "numeric", month: "short", year: "numeric" })
-  : "Sin fecha";
 
 function ProgressRing({ pct, size = 52, stroke = 4 }: { pct: number; size?: number; stroke?: number }) {
   const radius = (size - stroke) / 2;
@@ -79,7 +56,7 @@ function ProgressRing({ pct, size = 52, stroke = 4 }: { pct: number; size?: numb
   );
 }
 
-type ProjectTab = "active" | "completed" | "previous";
+type ProjectTab = ProjectSection;
 type Draft = {
   id: string; name: string; owner: string; responsibleUsernames: string[];
   projectType: ProjectType; priority: ProjectPriority; objective: string;
@@ -121,7 +98,7 @@ export default function ProjectsPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [statusProjectId, setStatusProjectId] = useState<string | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pendingOperation, setPendingOperation] = useState<ProjectPendingOperation>(null);
   const [error, setError] = useState("");
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,10 +117,21 @@ export default function ProjectsPage() {
   const globalPct = allSteps.length
     ? Math.round((allSteps.filter(({ done }) => done).length / allSteps.length) * 100)
     : 0;
+  const draftProjectId = draft?.id || "new";
+  const savingDraft = pendingOperation?.kind === "save" && pendingOperation.projectId === draftProjectId;
+
+  function clearPending(operation: Exclude<ProjectPendingOperation, null>) {
+    setPendingOperation((current) => current?.projectId === operation.projectId
+      && current.kind === operation.kind
+      && current.stepIndex === operation.stepIndex
+      ? null
+      : current);
+  }
 
   async function persistStatus(project: Project, nextStatus: TaskState) {
     setError("");
-    setPendingId(project.id);
+    const operation = { projectId: project.id, kind: "status" } as const;
+    setPendingOperation(operation);
     try {
       const transitioned = transitionProjectStatus(project, nextStatus, user.id, new Date());
       const patch = project.status === "done" && nextStatus !== "done"
@@ -158,13 +146,14 @@ export default function ProjectsPage() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo cambiar el estado.");
     } finally {
-      setPendingId(null);
+      clearPending(operation);
     }
   }
 
   async function persistStep(project: Project, index: number) {
     setError("");
-    setPendingId(project.id);
+    const operation = { projectId: project.id, kind: "step", stepIndex: index } as const;
+    setPendingOperation(operation);
     try {
       const next = toggleProjectStep(project, index, user.id, new Date());
       const result = await updateAsync(project.id, next);
@@ -172,14 +161,15 @@ export default function ProjectsPage() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo actualizar el paso.");
     } finally {
-      setPendingId(null);
+      clearPending(operation);
     }
   }
 
   async function save() {
     if (!draft || !draft.name.trim()) return;
     setError("");
-    setPendingId(draft.id || "new");
+    const operation = { projectId: draft.id || "new", kind: "save" } as const;
+    setPendingOperation(operation);
     const additions = normalizeAdditionalResponsibles(draft.owner, draft.responsibleUsernames);
     const parsedSteps = draft.contentMode === "steps"
       ? draft.steps
@@ -223,7 +213,7 @@ export default function ProjectsPage() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo guardar el proyecto.");
     } finally {
-      setPendingId(null);
+      clearPending(operation);
     }
   }
 
@@ -234,10 +224,11 @@ export default function ProjectsPage() {
   }
 
   async function removeProject(id: string) {
-    setPendingId(id);
+    const operation = { projectId: id, kind: "delete" } as const;
+    setPendingOperation(operation);
     setError("");
     const result = await removeAsync(id);
-    setPendingId(null);
+    clearPending(operation);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -252,10 +243,10 @@ export default function ProjectsPage() {
         eyebrow="Iniciativas"
         title="Proyectos"
         description="Gestioná iniciativas activas, consultá los trabajos completados y conservá el historial anterior."
-        action={<Button disabled={!!pendingId} onClick={() => { setError(""); setDraft(toDraft(undefined, user.username)); }}><Plus className="h-4 w-4" /> Nuevo proyecto</Button>}
+        action={<Button disabled={pendingOperation?.kind === "save"} onClick={() => { setError(""); setDraft(toDraft(undefined, user.username)); }}><Plus className="h-4 w-4" /> Nuevo proyecto</Button>}
       />
 
-      {error && !draft && <p role="alert" className="mb-5 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
+      {error && !draft && !open && <p role="alert" className="mb-5 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
 
       <Reveal className="mb-8">
         <div className="ring-glow glass grid grid-cols-2 rounded-2xl md:grid-cols-4">
@@ -294,12 +285,21 @@ export default function ProjectsPage() {
 
       {tab === "completed" && (
         <div className="mb-6 flex flex-wrap gap-2" aria-label="Filtrar completados por responsable">
-          <button type="button" aria-pressed={!completedResponsible} onClick={() => setCompletedResponsible("")} className="press rounded-xl border border-white/10 px-3 py-2 text-xs">Todos</button>
+          <button
+            type="button"
+            aria-pressed={!completedResponsible}
+            onClick={() => setCompletedResponsible("")}
+            className={`press min-h-11 rounded-xl border px-3 py-2 text-xs transition-colors ${
+              !completedResponsible ? "border-nude/50 bg-nude/10 text-white" : "border-white/10 text-[var(--muted)] hover:border-white/20 hover:text-white"
+            }`}
+          >Todos</button>
           {historicalResponsibles.map((username) => (
             <button
               key={username} type="button" aria-pressed={completedResponsible === username}
               onClick={() => setCompletedResponsible(username)}
-              className="press rounded-xl border border-white/10 px-3 py-2 text-xs text-[var(--muted)]"
+              className={`press min-h-11 rounded-xl border px-3 py-2 text-xs transition-colors ${
+                completedResponsible === username ? "border-nude/50 bg-nude/10 text-white" : "border-white/10 text-[var(--muted)] hover:border-white/20 hover:text-white"
+              }`}
             >
               {profileName.get(username) || displayUsername(username)}
             </button>
@@ -308,165 +308,83 @@ export default function ProjectsPage() {
       )}
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {shown.map((project, index) => {
-          const pending = pendingId === project.id;
-          const asking = confirmDel === project.id;
-          const responsibles = project.completedResponsibleUsernames ?? [project.owner, ...project.responsibleUsernames];
-          return (
-            <Reveal key={project.id} delay={index * 0.05} className="h-full">
-              <article className="glass glass-hover card-sheen group relative flex h-full flex-col rounded-2xl p-6">
-                <div className="mb-4 flex items-start gap-4">
-                  <ProgressRing pct={projectPct(project)} />
-                  <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => setOpenId(project.id)} {...cursorIntentProps("open")} className="line-clamp-2 text-left text-lg font-semibold text-white hover:text-nude">{project.name}</button>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[var(--muted)]">
-                      {tab === "completed" ? <AvatarStack usernames={responsibles} size={18} /> : <AvatarChip username={project.owner} size={16} />}
-                      {tab === "completed" ? (
-                        <span><CheckCircle2 className="mr-1 inline h-3 w-3" />{completedDate(project.completedAt)}</span>
-                      ) : (
-                        <span><CalendarPlus className="mr-1 inline h-3 w-3" />{fmtShortDate(project.createdAt)}</span>
-                      )}
-                      {project.due && <span><Clock className="mr-1 inline h-3 w-3" />{fmtShortDate(project.due)}</span>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-4 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide text-[var(--faint)]">
-                  <span className="rounded-full border border-white/10 px-2 py-1">{typeLabel(project.projectType)}</span>
-                  <span className="rounded-full border border-white/10 px-2 py-1">{priorityLabel(project.priority)}</span>
-                </div>
-
-                {tab === "active" && (
-                  <div className="mb-4">
-                    <button
-                      type="button" disabled={pending}
-                      aria-label={`Cambiar estado de ${project.name}`}
-                      onClick={() => setStatusProjectId(statusProjectId === project.id ? null : project.id)}
-                      className="press rounded-full border border-white/10 px-3 py-1.5 text-xs text-[var(--muted)]"
-                    >{stateLabel(project.status)}</button>
-                    {statusProjectId === project.id && (
-                      <div className="mt-2"><StateSelector value={project.status} onChange={(status) => void persistStatus(project, status)} /></div>
-                    )}
-                  </div>
-                )}
-                {tab === "previous" && <p className="mb-4 text-xs text-[var(--muted)]">Estado: {stateLabel(project.status)}</p>}
-
-                {project.contentMode === "steps" ? (
-                  <ul className="mb-4 space-y-1">
-                    {project.steps.slice(0, 4).map((step, stepIndex) => (
-                      <li key={`${step.label}-${stepIndex}`}>
-                        <button
-                          type="button" disabled={pending || tab !== "active"}
-                          onClick={() => void persistStep(project, stepIndex)}
-                          className="press flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-sm disabled:cursor-default"
-                        >
-                          {step.done ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Circle className="h-4 w-4 text-[var(--faint)]" />}
-                          <span className={step.done ? "text-[var(--faint)] line-through" : "text-[var(--muted)]"}>{step.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="mb-4 line-clamp-3 text-xs text-[var(--muted)]">{project.note || "Sin contenido"}</p>}
-
-                <div className="mt-auto flex items-center gap-2 border-t border-white/[0.06] pt-3">
-                  {tab === "completed" ? (
-                    <button
-                      type="button" disabled={pending} aria-label={`Reabrir ${project.name}`}
-                      onClick={() => void persistStatus(project, "doing")}
-                      {...cursorIntentProps("doing", "Reabrir")}
-                      className="press flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-[var(--muted)]"
-                    ><RotateCcw className="h-3 w-3" /> Reabrir</button>
-                  ) : tab === "active" ? (
-                    <>
-                      <button
-                        type="button" disabled={pending} aria-label={`Editar ${project.name}`}
-                        onClick={() => { setError(""); setDraft(toDraft(project)); }}
-                        {...cursorIntentProps("edit")}
-                        className="press flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-[var(--muted)]"
-                      ><Pencil className="h-3 w-3" /> Editar</button>
-                      <button
-                        type="button" disabled={pending}
-                        aria-label={asking ? `Confirmar eliminación de ${project.name}` : `Eliminar ${project.name}`}
-                        onClick={() => asking ? void removeProject(project.id) : askDelete(project.id)}
-                        {...cursorIntentProps("danger", asking ? "Confirmar" : "Eliminar")}
-                        className="press ml-auto flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-[var(--faint)]"
-                      ><Trash2 className="h-3 w-3" />{asking && "¿Seguro?"}</button>
-                    </>
-                  ) : null}
-                </div>
-              </article>
-            </Reveal>
-          );
-        })}
+        {shown.map((project, index) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            section={tab}
+            index={index}
+            pendingOperation={pendingOperation}
+            statusMenuOpen={statusProjectId === project.id}
+            deleteConfirmOpen={confirmDel === project.id}
+            onOpen={() => { setError(""); setOpenId(project.id); }}
+            onToggleStatusMenu={() => setStatusProjectId(statusProjectId === project.id ? null : project.id)}
+            onStatusChange={(status) => void persistStatus(project, status)}
+            onStepChange={(stepIndex) => void persistStep(project, stepIndex)}
+            onEdit={() => { setError(""); setDraft(toDraft(project, user.username)); }}
+            onDelete={() => confirmDel === project.id ? void removeProject(project.id) : askDelete(project.id)}
+            onReopen={() => void persistStatus(project, "doing")}
+          />
+        ))}
 
         {shown.length === 0 && (
           <div className="col-span-full"><EmptyState icon="✨" title={`Sin proyectos ${tab === "active" ? "activos" : tab === "completed" ? "completados" : "anteriores"}`} hint="No hay proyectos para mostrar en esta sección." /></div>
         )}
       </div>
 
-      <Modal
-        open={!!open}
+      <ProjectDetailModal
+        project={open}
+        pendingOperation={pendingOperation}
+        error={open ? error : ""}
         onClose={() => setOpenId(null)}
-        wide
-        title={open?.name ?? ""}
-        description={open ? `Creado el ${fmtShortDate(open.createdAt) ?? ""}` : ""}
-        footer={open && classifyProject(open) === "active" ? (
-          <div className="flex w-full justify-between gap-3">
-            <button type="button" aria-label={`Cambiar estado de ${open.name}`} onClick={() => setStatusProjectId(open.id)} className="text-sm text-[var(--muted)]">{stateLabel(open.status)}</button>
-            <Button variant="ghost" onClick={() => { setOpenId(null); setDraft(toDraft(open)); }}><Pencil className="h-4 w-4" /> Editar</Button>
-          </div>
-        ) : undefined}
-      >
-        {open && (
-          <div>
-            <AvatarStack usernames={[open.owner, ...open.responsibleUsernames]} />
-            {open.objective && <p className="mt-4 text-sm text-[var(--muted)]">{open.objective}</p>}
-            {open.contentMode === "note" ? <Markdown>{open.note || "_Sin contenido._"}</Markdown> : (
-              <ul className="mt-4 space-y-1">
-                {open.steps.map((step, index) => <li key={`${step.label}-${index}`}>{step.done ? "✓" : "○"} {step.label}</li>)}
-              </ul>
-            )}
-          </div>
-        )}
-      </Modal>
+        onStatusChange={(status) => { if (open) void persistStatus(open, status); }}
+        onStepChange={(stepIndex) => { if (open) void persistStep(open, stepIndex); }}
+        onEdit={() => {
+          if (!open) return;
+          setError("");
+          setOpenId(null);
+          setDraft(toDraft(open, user.username));
+        }}
+        onReopen={() => { if (open) void persistStatus(open, "doing"); }}
+      />
 
       <Modal
         open={!!draft}
-        onClose={() => { if (!pendingId) setDraft(null); }}
+        onClose={() => { if (!savingDraft) setDraft(null); }}
         wide
         title={draft?.id ? "Editar proyecto" : "Nuevo proyecto"}
         description="Definí responsables, alcance, fechas y contenido del proyecto."
-        footer={<><Button variant="ghost" disabled={!!pendingId} onClick={() => setDraft(null)}>Cancelar</Button><Button disabled={!draft?.name.trim() || !!pendingId} onClick={() => void save()}>Guardar</Button></>}
+        footer={<><Button variant="ghost" disabled={savingDraft} onClick={() => setDraft(null)}>Cancelar</Button><Button disabled={!draft?.name.trim() || savingDraft} onClick={() => void save()}>Guardar</Button></>}
       >
         {draft && (
           <div className="space-y-5">
             {error && <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
-            <Field label="Nombre"><Input disabled={!!pendingId} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></Field>
+            <Field label="Nombre"><Input disabled={savingDraft} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Tipo"><Select disabled={!!pendingId} value={draft.projectType} onChange={(event) => setDraft({ ...draft, projectType: event.target.value as ProjectType })}>{PROJECT_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>
-              <Field label="Prioridad"><Select disabled={!!pendingId} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as ProjectPriority })}>{PRIORITIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>
+              <Field label="Tipo"><Select disabled={savingDraft} value={draft.projectType} onChange={(event) => setDraft({ ...draft, projectType: event.target.value as ProjectType })}>{PROJECT_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>
+              <Field label="Prioridad"><Select disabled={savingDraft} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as ProjectPriority })}>{PROJECT_PRIORITIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>
             </div>
-            <Field label="Objetivo"><Textarea disabled={!!pendingId} rows={3} value={draft.objective} onChange={(event) => setDraft({ ...draft, objective: event.target.value })} /></Field>
+            <Field label="Objetivo"><Textarea disabled={savingDraft} rows={3} value={draft.objective} onChange={(event) => setDraft({ ...draft, objective: event.target.value })} /></Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Fecha de inicio"><Input disabled={!!pendingId} type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></Field>
-              <Field label="Fecha de entrega"><Input disabled={!!pendingId} type="date" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></Field>
+              <Field label="Fecha de inicio"><Input disabled={savingDraft} type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></Field>
+              <Field label="Fecha de entrega"><Input disabled={savingDraft} type="date" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></Field>
             </div>
-            <fieldset disabled={!!pendingId} className="m-0 min-w-0 space-y-5 border-0 p-0">
-              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Líder</span><OwnerPicker value={draft.owner} onChange={(owner) => { if (!pendingId) setDraft({ ...draft, owner, responsibleUsernames: normalizeAdditionalResponsibles(owner, draft.responsibleUsernames) }); }} /></div>
-              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsables adicionales</span><ProjectResponsiblePicker disabled={!!pendingId} owner={draft.owner} value={draft.responsibleUsernames} onChange={(responsibleUsernames) => setDraft({ ...draft, responsibleUsernames })} /></div>
-              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span><StateSelector value={draft.status} onChange={(status) => { if (!pendingId) setDraft({ ...draft, status }); }} /></div>
+            <fieldset disabled={savingDraft} className="m-0 min-w-0 space-y-5 border-0 p-0">
+              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Líder</span><OwnerPicker value={draft.owner} onChange={(owner) => { if (!savingDraft) setDraft({ ...draft, owner, responsibleUsernames: normalizeAdditionalResponsibles(owner, draft.responsibleUsernames) }); }} /></div>
+              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsables adicionales</span><ProjectResponsiblePicker disabled={savingDraft} owner={draft.owner} value={draft.responsibleUsernames} onChange={(responsibleUsernames) => setDraft({ ...draft, responsibleUsernames })} /></div>
+              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span><StateSelector value={draft.status} onChange={(status) => { if (!savingDraft) setDraft({ ...draft, status }); }} /></div>
               <div>
                 <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Contenido</span>
-                <Segmented value={draft.contentMode} onChange={(contentMode) => { if (!pendingId) setDraft({ ...draft, contentMode }); }} options={[{ value: "steps", label: <><ListChecks className="h-3.5 w-3.5" /> Pasos</> }, { value: "note", label: <><FileText className="h-3.5 w-3.5" /> Nota</> }]} />
+                <Segmented value={draft.contentMode} onChange={(contentMode) => { if (!savingDraft) setDraft({ ...draft, contentMode }); }} options={[{ value: "steps", label: <><ListChecks className="h-3.5 w-3.5" /> Pasos</> }, { value: "note", label: <><FileText className="h-3.5 w-3.5" /> Nota</> }]} />
               </div>
             </fieldset>
             {draft.contentMode === "steps" ? (
               <ProjectStepsEditor
                 value={draft.steps}
                 onChange={(steps) => setDraft({ ...draft, steps })}
-                disabled={!!pendingId}
+                disabled={savingDraft}
               />
-            ) : <Field label="Nota"><Textarea disabled={!!pendingId} rows={8} value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>}
+            ) : <Field label="Nota"><Textarea disabled={savingDraft} rows={8} value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></Field>}
           </div>
         )}
       </Modal>

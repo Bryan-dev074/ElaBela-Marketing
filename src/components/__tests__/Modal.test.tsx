@@ -69,6 +69,20 @@ function TimePickerModalHarness() {
 }
 
 describe("Modal", () => {
+  it("supports a mobile-safe studio surface without changing dialog semantics", () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Project Studio" size="studio">
+        <button type="button">Acción del estudio</button>
+      </Modal>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Project Studio" });
+    expect(dialog).toHaveClass("max-w-5xl");
+    expect(dialog.parentElement).toHaveClass("p-2", "sm:p-4");
+    expect(dialog.firstElementChild).toHaveClass("max-h-[calc(100dvh-1rem)]", "flex", "flex-col");
+    expect(dialog.querySelector(".max-h-\\[calc\\(100dvh-9rem\\)\\]")).toBeInTheDocument();
+  });
+
   it("associates its title and moves focus into the dialog", () => {
     render(<ModalHarness />);
     const trigger = screen.getByRole("button", { name: "Abrir modal" });

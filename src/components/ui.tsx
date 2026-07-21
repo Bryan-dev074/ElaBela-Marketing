@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useId, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import type { TaskState } from "@/lib/data";
 import { cursorIntentProps } from "@/lib/cursor-intent";
@@ -132,7 +132,7 @@ export function stateCursorProps(state: TaskState): Record<string, string> {
 
 /** Three-pill selector to set a TaskState by hand (proyectos, guiones, modals). */
 export function StateSelector({ value, onChange, size = "md" }: { value: TaskState; onChange: (s: TaskState) => void; size?: "sm" | "md" }) {
-  const pad = size === "sm" ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs";
+  const pad = size === "sm" ? "min-h-9 px-2.5 py-1 text-[10px]" : "min-h-11 px-3 py-1.5 text-xs";
   return (
     <div className="inline-flex flex-wrap gap-1.5">
       {(Object.keys(STATE_META) as TaskState[]).map((s) => {
@@ -353,6 +353,7 @@ export function Modal({
   children,
   footer,
   wide,
+  size = "default",
   initialFocusRef,
   titleId,
 }: {
@@ -363,6 +364,7 @@ export function Modal({
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
+  size?: "default" | "wide" | "studio";
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   titleId?: string;
 }) {
@@ -371,6 +373,12 @@ export function Modal({
   const resolvedTitleId = titleId ?? generatedTitleId;
   const dialogRef = useRef<HTMLDivElement>(null);
   const portalHostRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
+  const widthClass = size === "studio"
+    ? "max-w-5xl"
+    : size === "wide" || wide
+      ? "max-w-2xl"
+      : "max-w-md";
 
   useEffect(() => {
     if (!open) return;
@@ -400,7 +408,7 @@ export function Modal({
   return (
     <AnimatePresence>
       {open ? (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -420,15 +428,15 @@ export function Modal({
             onKeyDown={(event) => {
               if (dialogRef.current) containTabFocus(event, dialogRef.current);
             }}
-            className={`relative z-10 w-full ${wide ? "max-w-2xl" : "max-w-md"}`}
+            className={`relative z-10 w-full ${widthClass}`}
           >
             <DialogPortalHostContext.Provider value={portalHostRef}>
               <motion.div
-                initial={{ opacity: 0, scale: 0.96, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.97, y: 8 }}
-                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                className="glass w-full rounded-2xl shadow-pop"
+                initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 12 }}
+                animate={reducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
+                transition={{ duration: reducedMotion ? 0.12 : 0.2, ease: [0.16, 1, 0.3, 1] }}
+                className="glass flex max-h-[calc(100dvh-1rem)] w-full flex-col rounded-2xl shadow-pop sm:max-h-[calc(100dvh-2rem)]"
               >
                 <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] p-5">
                   <div>
@@ -439,7 +447,7 @@ export function Modal({
                     <X className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
+                <div className="min-h-0 flex-1 max-h-[calc(100dvh-9rem)] overflow-y-auto p-4 sm:p-5">{children}</div>
                 {footer ? <div className="flex justify-end gap-2 border-t border-[var(--border)] p-4">{footer}</div> : null}
               </motion.div>
               <div ref={portalHostRef} data-dialog-portal-host="true" />

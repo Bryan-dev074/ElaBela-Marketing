@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@/lib/data";
 import ProjectsPage from "@/app/(app)/proyectos/page";
@@ -106,9 +106,68 @@ describe("ProjectsPage", () => {
   it("opens an in-progress project with an open cursor intent instead of its status color", () => {
     render(<ProjectsPage />);
 
-    const openProject = screen.getByRole("button", { name: "Campaña Glow" });
+    const openProject = screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" });
     expect(openProject).toHaveAttribute("data-cursor", "open");
     expect(openProject).not.toHaveAttribute("data-cursor-color", "#3b82f6");
+  });
+
+  it("opens the integrated Project Studio from the card surface", () => {
+    render(<ProjectsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+    expect(dialog).toHaveClass("max-w-5xl");
+    expect(within(dialog).getByText("Presentar la línea Glow")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Editar proyecto" })).toBeInTheDocument();
+  });
+
+  it("changes project status from inside the detail", async () => {
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sin empezar" }));
+
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledWith("p1", expect.objectContaining({ status: "todo" })));
+  });
+
+  it("toggles a step from inside the detail", async () => {
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Completar paso: Diseñar piezas" }));
+
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledWith("p1", expect.objectContaining({
+      status: "done",
+      steps: [{ label: "Diseñar piezas", done: true }],
+    })));
+  });
+
+  it("hands the detail off to the structured editor", () => {
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Editar proyecto" }));
+
+    expect(screen.getByRole("dialog", { name: "Editar proyecto" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Paso 01" })).toHaveValue("Diseñar piezas");
+  });
+
+  it("keeps the studio open when the last step completes the project", async () => {
+    updateAsync.mockImplementationOnce(async (id: string, patch: Project) => {
+      projects = projects.map((item) => item.id === id ? { ...item, ...patch } : item);
+      return { ok: true };
+    });
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Campaña Glow" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Completar paso: Diseñar piezas" }));
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Campaña Glow" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Reabrir proyecto" })).toBeInTheDocument();
+    expect(screen.getByText(/Completado el/i)).toBeInTheDocument();
   });
 
   it("completes with the authenticated actor and responsible snapshot", async () => {
@@ -129,6 +188,19 @@ describe("ProjectsPage", () => {
     expect(screen.queryByText("Proyecto Elizabeth")).not.toBeInTheDocument();
   });
 
+  it("makes the selected completed profile visually distinct", () => {
+    projects = [completedGlow(), completedElizabeth()];
+    render(<ProjectsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Completados/i }));
+
+    const cielo = screen.getByRole("button", { name: "Cielo" });
+    fireEvent.click(cielo);
+
+    expect(cielo).toHaveAttribute("aria-pressed", "true");
+    expect(cielo).toHaveClass("border-nude/50", "bg-nude/10", "text-white");
+    expect(screen.getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("renders a completed project once when its lead is also in the snapshot", () => {
     projects = [completedGlow()];
     render(<ProjectsPage />);
@@ -140,7 +212,7 @@ describe("ProjectsPage", () => {
     projects = [completedGlow()];
     render(<ProjectsPage />);
     fireEvent.click(screen.getByRole("button", { name: /Completados/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Reabrir Campaña Glow/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Reabrir proyecto Campaña Glow/i }));
     await waitFor(() => expect(updateAsync).toHaveBeenCalledWith("p1", expect.objectContaining({
       status: "doing", completedAt: undefined, completedBy: undefined,
       completedResponsibleUsernames: undefined,
