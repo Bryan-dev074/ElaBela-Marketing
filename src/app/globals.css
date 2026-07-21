@@ -187,14 +187,7 @@
   /* ---- Custom cursor ---- */
   body.has-custom-cursor,
   body.has-custom-cursor * { cursor: none !important; }
-  body.has-custom-cursor input:not([type]),
-  body.has-custom-cursor input[type="text" i],
-  body.has-custom-cursor input[type="search" i],
-  body.has-custom-cursor input[type="email" i],
-  body.has-custom-cursor input[type="password" i],
-  body.has-custom-cursor input[type="url" i],
-  body.has-custom-cursor input[type="tel" i],
-  body.has-custom-cursor input[type="number" i],
+  body.has-custom-cursor input:not([type="button" i]):not([type="checkbox" i]):not([type="color" i]):not([type="date" i]):not([type="datetime-local" i]):not([type="file" i]):not([type="hidden" i]):not([type="image" i]):not([type="month" i]):not([type="radio" i]):not([type="range" i]):not([type="reset" i]):not([type="submit" i]):not([type="time" i]):not([type="week" i]),
   body.has-custom-cursor textarea,
   body.has-custom-cursor [contenteditable]:not([contenteditable="false"]) { cursor: text !important; }
 

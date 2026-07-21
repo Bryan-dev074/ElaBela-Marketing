@@ -2,6 +2,7 @@ import React from "react";
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CustomCursor from "@/components/CustomCursor";
+import "@/app/globals.css";
 
 describe("CustomCursor", () => {
   beforeEach(() => {
@@ -46,6 +47,31 @@ describe("CustomCursor", () => {
 
     expect(container.querySelector(".cursor-ring")).toHaveAttribute("data-hover", "0");
     expect(container.querySelector(".cursor-tag")).toHaveAttribute("data-visible", "0");
+  });
+
+  it.each([
+    ["empty", ""],
+    ["invalid", "not-a-real-input-type"],
+  ])("preserves the native caret for a %s input type", (_description, type) => {
+    const { container } = render(
+      <>
+        <CustomCursor />
+        <input type={type} aria-label="Título" />
+      </>,
+    );
+
+    expect(getComputedStyle(container.querySelector("input")!).cursor).toBe("text");
+  });
+
+  it("does not force the text caret for a non-textual input", () => {
+    const { container } = render(
+      <>
+        <CustomCursor />
+        <input type="checkbox" aria-label="Completar" />
+      </>,
+    );
+
+    expect(getComputedStyle(container.querySelector("input")!).cursor).toBe("none");
   });
 
   it("does not tint the cursor from a passive annotated ancestor", () => {
