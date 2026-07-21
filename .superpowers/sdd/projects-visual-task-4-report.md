@@ -44,18 +44,18 @@ Focused tests were added before production changes.
 - Accessibility rereview focused RED → GREEN — expected 4 failures, then passed: 3 files, 8 tests.
 - Avatar size-coverage follow-up — passed: 1 file, 4 tests, explicitly covering `sm`, `md`, and omitted/default `md` hit targets.
 - Mobile editor and final review follow-up — passed: 4 files, 28 tests; includes the 16-pixel mobile field rule and example-based step placeholder.
-- `npm.cmd test` — passed: 37 files, 346 tests.
+- `npm.cmd test` — final pass: 37 files, 353 tests.
 - `npx.cmd tsc --noEmit` — passed with exit code 0.
 - `npm.cmd run build` — passed; Next.js production build compiled and generated 16/16 static pages.
-- `npm.cmd run test:e2e` — not rerun in this correction. Existing E2E coverage remains login-only and cannot reach authenticated Projects without credentials or weakened authentication; the changed behavior is covered by focused component/page tests.
+- `npm.cmd run test:e2e` — final pass: 3/3 Playwright login tests.
 - `git diff --check` — passed after the report edit; rerun once more immediately before commit.
 
 ## Commit and repository hygiene
 
 Accessibility corrective commit subject: `fix(projects): complete editor accessibility`.
 
-No push was performed. The unrelated pre-existing modification to `.superpowers/sdd/projects-visual-task-2-report.md` remains deliberately unstaged and excluded.
+The unrelated pre-existing modification to `.superpowers/sdd/projects-visual-task-2-report.md` remains deliberately unstaged and excluded from the Projects delivery commits.
 
-## Remaining concern for controller QA
+## Final controller QA
 
-Authenticated desktop/mobile visual QA of `/proyectos` still requires an existing signed-in browser session. Automated authenticated Projects E2E was not added because the current helpers cannot reach that page safely without embedding credentials or weakening authentication.
+Authenticated desktop and 390×844 mobile QA of `/proyectos` passed using the existing signed-in browser session. The project list, Project Studio detail, structured editor, sticky mobile actions, semantic cursor colors, and responsive overflow were inspected without mutating project data. The final page reload had no console errors or warnings and was left open at `/proyectos`.
