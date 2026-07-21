@@ -117,6 +117,12 @@
   .field:focus { border-color: rgba(214, 171, 153, 0.55); background: rgba(0, 0, 0, 0.5); }
   .field::placeholder { color: var(--faint); }
 
+  @media (max-width: 639px) {
+    .field {
+      font-size: 1rem;
+    }
+  }
+
   /* Status backgrounds for tasks / guiones — instant, no JS animation */
   .state-todo   { background: rgba(255,255,255,0.03); border-color: var(--border); }
   .state-doing  { background: rgba(59,130,246,0.12);  border-color: rgba(59,130,246,0.4); }

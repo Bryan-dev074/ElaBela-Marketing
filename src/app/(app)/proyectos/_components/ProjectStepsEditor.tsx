@@ -85,8 +85,8 @@ export function ProjectStepsEditor({
                     event.preventDefault();
                     if (index === steps.length - 1 && event.currentTarget.value.trim()) appendStep();
                   }}
-                  className="min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-sm text-white outline-none placeholder:text-[var(--faint)] transition focus-visible:border-[#d6ab99]/60 focus-visible:ring-2 focus-visible:ring-[#d6ab99]/35 disabled:cursor-not-allowed disabled:opacity-60"
-                  placeholder="Describí este paso"
+                  className="min-h-11 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-base text-white outline-none placeholder:text-[var(--faint)] transition focus-visible:border-[#d6ab99]/60 focus-visible:ring-2 focus-visible:ring-[#d6ab99]/35 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                  placeholder="Describí este paso…"
                 />
                 <button
                   type="button"

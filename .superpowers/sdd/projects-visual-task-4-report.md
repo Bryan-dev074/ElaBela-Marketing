@@ -25,6 +25,7 @@ Focused tests were added before production changes.
 - GREEN: the identical focused command passed 4/4 files and 44/44 tests.
 - Accessibility rereview RED: `npm.cmd test -- "src/components/__tests__/Avatar.test.tsx" "src/components/__tests__/ProjectResponsiblePicker.test.tsx" "src/components/__tests__/motion-accessibility.test.ts"` failed with the expected 4 regressions: 2 leader-selection assertions, 1 additional-responsible target assertion, and 1 shared-field minimum-height assertion.
 - Accessibility rereview GREEN: the identical focused command passed 3/3 files and 8/8 tests.
+- Avatar coverage follow-up: `npm.cmd test -- "src/components/__tests__/Avatar.test.tsx"` explicitly covers small, explicit medium, and omitted/default-medium picker sizes; it passed 1/1 file and 4/4 tests.
 
 ## Binding review
 
@@ -40,6 +41,7 @@ Focused tests were added before production changes.
 
 - Original focused RED → GREEN — expected 12 failures, then passed: 4 files, 44 tests.
 - Accessibility rereview focused RED → GREEN — expected 4 failures, then passed: 3 files, 8 tests.
+- Avatar size-coverage follow-up — passed: 1 file, 4 tests, explicitly covering `sm`, `md`, and omitted/default `md` hit targets.
 - `npm.cmd test` — passed: 37 files, 346 tests.
 - `npx.cmd tsc --noEmit` — passed with exit code 0.
 - `npm.cmd run build` — passed; Next.js production build compiled and generated 16/16 static pages.

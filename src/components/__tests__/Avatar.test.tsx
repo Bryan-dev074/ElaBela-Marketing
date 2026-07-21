@@ -23,8 +23,24 @@ describe("OwnerPicker", () => {
     expect(screen.getByRole("button", { name: /cielo/i })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("keeps every leader option at least 44 pixels tall", () => {
+  it("keeps every small leader option at least 44 pixels tall", () => {
     render(<OwnerPicker value="bryan" onChange={vi.fn()} size="sm" />);
+
+    for (const option of screen.getAllByRole("button")) {
+      expect(option).toHaveClass("min-h-11");
+    }
+  });
+
+  it("keeps every explicit medium leader option at least 44 pixels tall", () => {
+    render(<OwnerPicker value="bryan" onChange={vi.fn()} size="md" />);
+
+    for (const option of screen.getAllByRole("button")) {
+      expect(option).toHaveClass("min-h-11");
+    }
+  });
+
+  it("keeps the default medium leader options at least 44 pixels tall", () => {
+    render(<OwnerPicker value="bryan" onChange={vi.fn()} />);
 
     for (const option of screen.getAllByRole("button")) {
       expect(option).toHaveClass("min-h-11");

@@ -121,6 +121,14 @@ describe("ProjectStepsEditor", () => {
     expect(screen.getByRole("button", { name: "Eliminar Paso 01" })).toHaveClass("h-11");
   });
 
+  it("keeps step fields legible on mobile and uses an intentional placeholder", () => {
+    render(<EditorHarness initial={[{ label: "", done: false }]} />);
+
+    const field = screen.getByRole("textbox", { name: "Paso 01" });
+    expect(field).toHaveClass("text-base", "sm:text-sm");
+    expect(field).toHaveAttribute("placeholder", "Describí este paso…");
+  });
+
   it("removes insertion translation and scale when reduced motion is preferred", () => {
     motionState.reduced = true;
     const { container } = render(<EditorHarness initial={[{ label: "Planificar", done: false }]} />);

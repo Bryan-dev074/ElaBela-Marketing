@@ -10,6 +10,10 @@ describe("shared field accessibility", () => {
 
     expect(rule).toMatch(/min-height:\s*2\.75rem/);
   });
+
+  it("keeps shared fields at a mobile-safe 16-pixel font size", () => {
+    expect(css).toMatch(/@media\s*\(max-width:\s*639px\)\s*{\s*\.field\s*{[^}]*font-size:\s*1rem/s);
+  });
 });
 
 describe("shared reduced-motion CSS", () => {
