@@ -10,6 +10,12 @@ type MarkdownNode = {
   children?: MarkdownNode[];
 };
 
+function readableHtml(value: string): string {
+  return value
+    .replace(/<!--([\s\S]*?)-->/g, " $1 ")
+    .replace(/<[^>]*>/g, " ");
+}
+
 export const PROJECT_TYPES: Array<{ value: ProjectType; label: string }> = [
   { value: "campaign", label: "Campaña" },
   { value: "launch", label: "Lanzamiento" },
@@ -49,8 +55,13 @@ export function projectNotePreview(value: string): string {
   }) as MarkdownNode;
 
   const extractText = (node: MarkdownNode): string => {
-    if (node.type === "definition" || node.type === "html" || node.type === "thematicBreak") return "";
-    if (node.type === "image") return typeof node.alt === "string" ? node.alt : "";
+    if (node.type === "definition" || node.type === "thematicBreak") return "";
+    if (node.type === "image" || node.type === "imageReference") {
+      return typeof node.alt === "string" ? node.alt : "";
+    }
+    if (node.type === "html") {
+      return typeof node.value === "string" ? readableHtml(node.value) : "";
+    }
     if (typeof node.value === "string") return node.value;
     return (node.children ?? []).map(extractText).filter(Boolean).join(" ");
   };

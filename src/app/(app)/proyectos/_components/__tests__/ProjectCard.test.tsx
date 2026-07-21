@@ -11,6 +11,21 @@ const motionState = vi.hoisted(() => ({
   animations: [] as Array<Record<string, unknown> | undefined>,
 }));
 
+const projectMetaState = vi.hoisted(() => ({
+  previewCalls: [] as string[],
+}));
+
+vi.mock("../project-meta", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../project-meta")>();
+  return {
+    ...actual,
+    projectNotePreview: (value: string) => {
+      projectMetaState.previewCalls.push(value);
+      return actual.projectNotePreview(value);
+    },
+  };
+});
+
 vi.mock("framer-motion", async () => {
   const ReactModule = await import("react");
   const factory = (tag: "article" | "span") => ReactModule.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement> & {
@@ -106,6 +121,7 @@ describe("ProjectCard", () => {
     motionState.reduced = false;
     motionState.transitions.length = 0;
     motionState.animations.length = 0;
+    projectMetaState.previewCalls.length = 0;
   });
 
   it("uses an explicit opening surface without nesting actions in a control", () => {
@@ -201,6 +217,60 @@ describe("ProjectCard", () => {
     renderCard({ value: project({ contentMode: "note", note: "***", steps: [] }) });
 
     expect(screen.getByText("Sin contenido")).toBeInTheDocument();
+  });
+
+  it("keeps image-reference labels and readable HTML content in note previews", () => {
+    renderCard({
+      value: project({
+        contentMode: "note",
+        note: [
+          "![Pieza principal][hero]",
+          "",
+          "<section>",
+          "Campaña <strong>ElaBela</strong>",
+          "</section>",
+          "",
+          "[hero]: /campana-glow.png",
+        ].join("\n"),
+        steps: [],
+      }),
+    });
+
+    const preview = document.querySelector("[data-project-note-preview]");
+    expect(preview).toHaveTextContent("Pieza principal Campaña ElaBela");
+    expect(preview?.textContent).not.toMatch(/<\/?(?:section|strong)>|campana-glow\.png/);
+  });
+
+  it("reuses a note preview while unrelated card props change", () => {
+    const note = "## Lanzamiento\n\nPresentación editorial";
+    const callbacks = {
+      onOpen: vi.fn(),
+      onToggleStatusMenu: vi.fn(),
+      onStatusChange: vi.fn(),
+      onStepChange: vi.fn(),
+      onEdit: vi.fn(),
+      onDelete: vi.fn(),
+      onReopen: vi.fn(),
+    };
+    const baseProps = {
+      section: "active" as const,
+      index: 0,
+      pendingOperation: null,
+      statusMenuOpen: false,
+      deleteConfirmOpen: false,
+      ...callbacks,
+    };
+    const value = project({ contentMode: "note", note, steps: [] });
+    const { rerender } = render(<ProjectCard {...baseProps} project={value} />);
+
+    expect(projectMetaState.previewCalls).toEqual([note]);
+
+    rerender(<ProjectCard {...baseProps} project={{ ...value, objective: "Otro objetivo" }} />);
+    expect(projectMetaState.previewCalls).toEqual([note]);
+
+    const updatedNote = `${note}\n\nNueva observación`;
+    rerender(<ProjectCard {...baseProps} project={{ ...value, note: updatedNote }} />);
+    expect(projectMetaState.previewCalls).toEqual([note, updatedNote]);
   });
 
   it("shows completion audit and a 44-pixel reopen action", () => {

@@ -49,6 +49,10 @@ export function ProjectCard({
 }): React.ReactNode {
   const reducedMotion = useReducedMotion();
   const progress = getProjectProgress(project);
+  const notePreview = React.useMemo(
+    () => project.contentMode === "note" ? projectNotePreview(project.note || "") : "",
+    [project.contentMode, project.note],
+  );
   const belongsToProject = pendingOperation?.projectId === project.id;
   const effectiveSection = belongsToProject
     ? pendingOperation?.sourceSection ?? section
@@ -169,7 +173,7 @@ export function ProjectCard({
           />
         ) : (
           <p data-project-note-preview="true" className="pointer-events-none line-clamp-4 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-3 text-xs leading-5 text-[var(--muted)]">
-            {projectNotePreview(project.note || "") || "Sin contenido"}
+            {notePreview || "Sin contenido"}
           </p>
         )}
       </div>
