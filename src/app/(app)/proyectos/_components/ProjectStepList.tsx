@@ -93,7 +93,7 @@ export function ProjectStepList({
                 </button>
               </span>
 
-              <span className={`min-w-0 text-sm leading-5 ${step.done ? "text-[var(--muted)] line-through decoration-emerald-300/35" : "text-zinc-100"}`}>
+              <span className={`min-w-0 text-sm leading-5 ${variant === "compact" ? "line-clamp-2" : ""} ${step.done ? "text-[var(--muted)] line-through decoration-emerald-300/35" : "text-zinc-100"}`}>
                 {step.label}
               </span>
 

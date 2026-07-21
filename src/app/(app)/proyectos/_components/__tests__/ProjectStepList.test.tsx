@@ -61,6 +61,16 @@ describe("ProjectStepList", () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
+  it("keeps compact step labels visually bounded without clipping detail labels", () => {
+    render(<ProjectStepList project={project()} variant="compact" onToggle={vi.fn()} />);
+
+    expect(screen.getByText("Concepto")).toHaveClass("line-clamp-2");
+
+    render(<ProjectStepList project={project()} variant="detail" onToggle={vi.fn()} />);
+    const detailLabels = screen.getAllByText("Concepto");
+    expect(detailLabels[1]).not.toHaveClass("line-clamp-2");
+  });
+
   it("renders every row in the detail variant", () => {
     render(<ProjectStepList project={project()} variant="detail" onToggle={vi.fn()} />);
 

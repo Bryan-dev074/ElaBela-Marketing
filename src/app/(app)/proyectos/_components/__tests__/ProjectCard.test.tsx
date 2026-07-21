@@ -167,6 +167,19 @@ describe("ProjectCard", () => {
     expect(screen.getByRole("button", { name: "+2 pasos más" })).toBeInTheDocument();
   });
 
+  it("shows a clean plain-text preview for Markdown notes", () => {
+    renderCard({
+      value: project({
+        contentMode: "note",
+        note: "## Objetivo\n\nReforzar **comunidad** y [ventas](https://example.com).\n\n- Reel principal",
+        steps: [],
+      }),
+    });
+
+    expect(screen.getByText("Objetivo Reforzar comunidad y ventas. Reel principal")).toBeInTheDocument();
+    expect(screen.queryByText(/##|\*\*|\]\(/)).not.toBeInTheDocument();
+  });
+
   it("shows completion audit and a 44-pixel reopen action", () => {
     const callbacks = renderCard({
       section: "completed",

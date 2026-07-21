@@ -31,3 +31,15 @@ export function formatProjectAuditDate(value?: string): string {
   if (Number.isNaN(date.getTime())) return "Sin fecha";
   return date.toLocaleDateString("es-PY", { day: "numeric", month: "short", year: "numeric" });
 }
+
+export function projectNotePreview(value: string): string {
+  return value
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, "")
+    .replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "")
+    .replace(/^[ \t]*>[ \t]?/gm, "")
+    .replace(/[*_~`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}

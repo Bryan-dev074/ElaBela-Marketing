@@ -12,7 +12,7 @@ import { fmtShortDate, type Project, type TaskState } from "@/lib/data";
 import { getProjectProgress, ProjectProgress } from "./ProjectProgress";
 import { ProjectStepList } from "./ProjectStepList";
 import {
-  formatProjectAuditDate, projectPriorityLabel, projectTypeLabel,
+  formatProjectAuditDate, projectNotePreview, projectPriorityLabel, projectTypeLabel,
 } from "./project-meta";
 import type { ProjectPendingOperation, ProjectSection } from "./project-view-types";
 
@@ -169,7 +169,7 @@ export function ProjectCard({
           />
         ) : (
           <p className="pointer-events-none line-clamp-4 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-3 text-xs leading-5 text-[var(--muted)]">
-            {project.note || "Sin contenido"}
+            {project.note ? projectNotePreview(project.note) : "Sin contenido"}
           </p>
         )}
       </div>
