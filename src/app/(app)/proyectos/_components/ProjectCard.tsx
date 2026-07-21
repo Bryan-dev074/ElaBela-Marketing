@@ -57,6 +57,7 @@ export function ProjectCard({
   const effectiveSection = belongsToProject
     ? pendingOperation?.sourceSection ?? section
     : section;
+  const isActiveDoing = effectiveSection === "active" && project.status === "doing";
   const mutationPending = Boolean(belongsToProject);
   const statusPending = Boolean(belongsToProject && pendingOperation?.kind === "status");
   const pendingStepIndex = belongsToProject && pendingOperation?.kind === "step"
@@ -107,6 +108,21 @@ export function ProjectCard({
         }`}
       />
 
+      {isActiveDoing ? (
+        <motion.span
+          data-project-doing-glow="true"
+          aria-hidden="true"
+          initial={false}
+          animate={reducedMotion
+            ? { opacity: 0.18, scale: 1 }
+            : { opacity: [0.12, 0.26, 0.12], scale: [0.96, 1.04, 0.96] }}
+          transition={reducedMotion
+            ? { duration: 0 }
+            : { duration: 3.2, ease: "easeInOut", repeat: Infinity }}
+          className="pointer-events-none absolute -inset-4 z-0 rounded-[2rem] bg-blue-500/15 blur-2xl"
+        />
+      ) : null}
+
       <div className="pointer-events-none relative z-10 flex min-w-0 items-start gap-4">
         <ProjectProgress project={project} compact size={52} />
         <div className="min-w-0 flex-1">
@@ -146,7 +162,11 @@ export function ProjectCard({
             aria-expanded={statusMenuOpen}
             onClick={onToggleStatusMenu}
             {...cursorIntentProps("edit", "Cambiar estado")}
-            className="pointer-events-auto press inline-flex min-h-11 items-center rounded-full border border-white/10 px-3 text-xs text-[var(--muted)] transition-colors hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-55"
+            className={`pointer-events-auto press inline-flex min-h-11 items-center rounded-full border px-3 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
+              isActiveDoing
+                ? "border-blue-400/40 bg-blue-500/15 text-blue-200 hover:border-blue-300/60 hover:text-blue-100"
+                : "border-white/10 text-[var(--muted)] hover:border-white/20 hover:text-white"
+            }`}
           >
             {statusPending ? "Guardando estado…" : stateLabel(project.status)}
           </button>

@@ -294,6 +294,22 @@ describe("ProjectCard", () => {
     expect(callbacks.onReopen).toHaveBeenCalledOnce();
   });
 
+  it("gives only an active doing project a blue status pill and breathing glow", () => {
+    renderCard();
+
+    expect(screen.getByRole("button", { name: "Cambiar estado de Campaña Glow" }))
+      .toHaveClass("border-blue-400/40", "bg-blue-500/15", "text-blue-200");
+    expect(document.querySelector("[data-project-doing-glow]"))
+      .toBeInTheDocument();
+  });
+
+  it("keeps non-doing cards free of the blue breathing treatment", () => {
+    renderCard({ value: project({ status: "todo" }) });
+
+    expect(document.querySelector("[data-project-doing-glow]"))
+      .not.toBeInTheDocument();
+  });
+
   it("removes card movement and caps entrance delay under reduced motion", () => {
     motionState.reduced = true;
     renderCard();
