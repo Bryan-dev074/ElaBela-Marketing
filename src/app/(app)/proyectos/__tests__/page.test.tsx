@@ -270,6 +270,35 @@ describe("ProjectsPage", () => {
     expect(updateAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a failed A error out of B and restores it when A opens after B operates", async () => {
+    const first = deferred<{ ok: false; error: string }>();
+    const second = deferred<{ ok: true }>();
+    projects = [activeGlow(), activeSol()];
+    updateAsync.mockImplementation((id: string) => id === "p1" ? first.promise : second.promise);
+    render(<ProjectsPage />);
+
+    const cardA = screen.getByRole("article", { name: "Campaña Glow" });
+    fireEvent.click(within(cardA).getByRole("button", { name: "Cambiar estado de Campaña Glow" }));
+    fireEvent.click(within(cardA).getByRole("button", { name: "Sin empezar" }));
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Sol" }));
+    const dialogB = screen.getByRole("dialog", { name: "Campaña Sol" });
+    await act(async () => {
+      first.resolve({ ok: false, error: "Fallo de A" });
+      await first.promise;
+    });
+
+    expect(within(dialogB).queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(within(dialogB).getByRole("button", { name: "Sin empezar" }));
+    await waitFor(() => expect(updateAsync).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(dialogB).getByRole("button", { name: "Cerrar" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" }));
+    const dialogA = screen.getByRole("dialog", { name: "Campaña Glow" });
+    expect(within(dialogA).getByRole("alert")).toHaveTextContent("Fallo de A");
+  });
+
   it("completes with the authenticated actor and responsible snapshot", async () => {
     render(<ProjectsPage />);
     fireEvent.click(screen.getByRole("button", { name: /Cambiar estado de Campaña Glow/i }));

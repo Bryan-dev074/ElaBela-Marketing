@@ -13,3 +13,5 @@ export type ProjectPendingOperation = {
 } | null;
 
 export type ProjectPendingOperations = Partial<Record<string, Exclude<ProjectPendingOperation, null>>>;
+
+export type ProjectErrors = Partial<Record<string, string>>;
