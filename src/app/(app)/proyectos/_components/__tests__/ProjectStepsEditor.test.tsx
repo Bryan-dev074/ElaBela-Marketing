@@ -51,17 +51,24 @@ describe("ProjectStepsEditor", () => {
     await waitFor(() => expect(thirdStep).toHaveFocus());
   });
 
-  it("deletes a middle row and renumbers the remaining route", async () => {
+  it("deletes a middle row, renumbers, and preserves the following row identity", async () => {
     render(<EditorHarness initial={[
       { label: "Planificar", done: false },
       { label: "Diseñar", done: false },
       { label: "Publicar", done: false },
     ]} />);
 
+    const thirdStep = screen.getByRole("textbox", { name: "Paso 03" });
+    const thirdRowId = thirdStep.closest("[data-row-id]")?.getAttribute("data-row-id");
+    expect(thirdRowId).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Eliminar Paso 02" }));
 
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Paso 03" })).not.toBeInTheDocument());
-    expect(screen.getByRole("textbox", { name: "Paso 02" })).toHaveValue("Publicar");
+    await waitFor(() => expect(screen.getAllByRole("textbox", { name: "Paso 02" })).toHaveLength(1));
+    const renumberedStep = screen.getByRole("textbox", { name: "Paso 02" });
+    expect(renumberedStep).toHaveValue("Publicar");
+    expect(renumberedStep.closest("[data-row-id]")).toHaveAttribute("data-row-id", thirdRowId);
   });
 
   it("keeps one blank row after deleting the last remaining row", async () => {

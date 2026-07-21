@@ -451,13 +451,15 @@ export default function ProjectsPage() {
               <Field label="Fecha de inicio"><Input disabled={!!pendingId} type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></Field>
               <Field label="Fecha de entrega"><Input disabled={!!pendingId} type="date" value={draft.due} onChange={(event) => setDraft({ ...draft, due: event.target.value })} /></Field>
             </div>
-            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Líder</span><OwnerPicker value={draft.owner} onChange={(owner) => { if (!pendingId) setDraft({ ...draft, owner, responsibleUsernames: normalizeAdditionalResponsibles(owner, draft.responsibleUsernames) }); }} /></div>
-            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsables adicionales</span><ProjectResponsiblePicker disabled={!!pendingId} owner={draft.owner} value={draft.responsibleUsernames} onChange={(responsibleUsernames) => setDraft({ ...draft, responsibleUsernames })} /></div>
-            <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span><StateSelector value={draft.status} onChange={(status) => { if (!pendingId) setDraft({ ...draft, status }); }} /></div>
-            <div>
-              <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Contenido</span>
-              <Segmented value={draft.contentMode} onChange={(contentMode) => { if (!pendingId) setDraft({ ...draft, contentMode }); }} options={[{ value: "steps", label: <><ListChecks className="h-3.5 w-3.5" /> Pasos</> }, { value: "note", label: <><FileText className="h-3.5 w-3.5" /> Nota</> }]} />
-            </div>
+            <fieldset disabled={!!pendingId} className="m-0 min-w-0 space-y-5 border-0 p-0">
+              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Líder</span><OwnerPicker value={draft.owner} onChange={(owner) => { if (!pendingId) setDraft({ ...draft, owner, responsibleUsernames: normalizeAdditionalResponsibles(owner, draft.responsibleUsernames) }); }} /></div>
+              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsables adicionales</span><ProjectResponsiblePicker disabled={!!pendingId} owner={draft.owner} value={draft.responsibleUsernames} onChange={(responsibleUsernames) => setDraft({ ...draft, responsibleUsernames })} /></div>
+              <div><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span><StateSelector value={draft.status} onChange={(status) => { if (!pendingId) setDraft({ ...draft, status }); }} /></div>
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Contenido</span>
+                <Segmented value={draft.contentMode} onChange={(contentMode) => { if (!pendingId) setDraft({ ...draft, contentMode }); }} options={[{ value: "steps", label: <><ListChecks className="h-3.5 w-3.5" /> Pasos</> }, { value: "note", label: <><FileText className="h-3.5 w-3.5" /> Nota</> }]} />
+              </div>
+            </fieldset>
             {draft.contentMode === "steps" ? (
               <ProjectStepsEditor
                 value={draft.steps}

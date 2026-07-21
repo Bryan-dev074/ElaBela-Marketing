@@ -223,6 +223,9 @@ describe("ProjectsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "bryan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Listo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nota" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Nota" }));
     fireEvent.click(screen.getByRole("button", { name: "Listo" }));
 

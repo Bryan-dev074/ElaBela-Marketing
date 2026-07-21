@@ -18,8 +18,15 @@ export function ProjectStepsEditor({
 }): React.ReactNode {
   const reducedMotion = useReducedMotion();
   const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const rowIds = useRef<string[]>([]);
+  const nextRowId = useRef(0);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const steps = value.length ? value : [blankStep()];
+
+  while (rowIds.current.length < steps.length) {
+    rowIds.current.push(`project-step-${nextRowId.current++}`);
+  }
+  if (rowIds.current.length > steps.length) rowIds.current.splice(steps.length);
 
   useEffect(() => {
     if (focusIndex === null) return;
@@ -29,6 +36,7 @@ export function ProjectStepsEditor({
 
   function appendStep() {
     if (disabled) return;
+    rowIds.current.push(`project-step-${nextRowId.current++}`);
     onChange([...steps, blankStep()]);
     setFocusIndex(steps.length);
   }
@@ -41,6 +49,7 @@ export function ProjectStepsEditor({
   function deleteStep(index: number) {
     if (disabled) return;
     const nextSteps = steps.filter((_, currentIndex) => currentIndex !== index);
+    if (nextSteps.length) rowIds.current.splice(index, 1);
     onChange(nextSteps.length ? nextSteps : [blankStep()]);
   }
 
@@ -50,9 +59,11 @@ export function ProjectStepsEditor({
         <AnimatePresence initial={false}>
           {steps.map((step, index) => {
             const stepName = `Paso ${String(index + 1).padStart(2, "0")}`;
+            const rowId = rowIds.current[index];
             return (
               <motion.div
-                key={index}
+                key={rowId}
+                data-row-id={rowId}
                 data-motion={reducedMotion ? "reduced" : "full"}
                 initial={reducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}

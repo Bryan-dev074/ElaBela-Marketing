@@ -38,3 +38,10 @@
 
 - No blocking concerns.
 - Steps intentionally do not support drag reorder because persisted steps have no stable IDs. The editor uses positional rows only for short add/remove motion.
+
+## Review follow-up
+
+- Original implementation SHA: `ad61761426220939b227e62a2882341917cc66a3`.
+- The draft’s leader, status and content-mode controls are now inside a disabled fieldset while saving, so their native controls are semantically disabled and unfocusable.
+- Step rows now receive ephemeral presentation-only identities. Removing a middle row preserves the next row’s identity without changing `Project.steps` or adding drag reorder.
+- Regression coverage asserts disabled native controls during pending saves and identity/content preservation after deleting Paso 02.
