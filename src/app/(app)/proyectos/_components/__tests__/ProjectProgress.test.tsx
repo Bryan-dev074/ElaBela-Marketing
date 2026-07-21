@@ -98,6 +98,14 @@ describe("ProjectProgress", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
   });
 
+  it("keeps the zero-step label visible inside the compact ring", () => {
+    render(<ProjectProgress project={project({ steps: [] })} compact />);
+
+    expect(screen.getByText("Sin pasos")).toBeVisible();
+    expect(screen.queryByText(/0\s?%/)).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "Sin pasos");
+  });
+
   it("uses a zero-duration tween under reduced motion and never a spring", () => {
     motionState.reduced = true;
     render(<ProjectProgress project={project()} compact />);

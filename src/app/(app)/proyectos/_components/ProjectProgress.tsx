@@ -132,8 +132,8 @@ export function ProjectProgress({ project, size = 68, compact = false }: {
             }}
           />
         </svg>
-        {compact && total > 0 ? (
-          <span className={`num absolute inset-0 flex items-center justify-center text-[11px] font-semibold ${complete ? "text-emerald-300" : "text-[#dec2ad]"}`}>
+        {compact ? (
+          <span className={`num absolute inset-0 flex items-center justify-center px-1 text-center font-semibold ${total === 0 ? "text-[9px] leading-tight text-[var(--faint)]" : complete ? "text-[11px] text-emerald-300" : "text-[11px] text-[#dec2ad]"}`}>
             {visibleText}
           </span>
         ) : null}

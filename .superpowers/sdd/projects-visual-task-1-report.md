@@ -43,3 +43,10 @@
 
 - No functional blocker found.
 - Browser-level composition QA is deferred until these foundations are intentionally integrated into `ProjectsPage`; this task explicitly forbids that integration.
+
+## Review fix — compact project without steps
+
+- Confirmed the review finding: compact determinate progress with zero steps exposed `aria-valuetext="Sin pasos"` but rendered only an empty ring because both visible text branches excluded that state.
+- RED: added a focused regression test for `compact + steps: []`; the test failed because no visible `Sin pasos` element existed while the accessible progress value remained correct.
+- GREEN: the compact ring now renders `Sin pasos` centered with restrained 9 px faint text, preserves the ring dimensions, omits `0%`, and keeps the existing progressbar name and value text.
+- Final regression verification after the fix: both focused files pass with 12 tests total, and `npx.cmd tsc --noEmit` exits successfully.
