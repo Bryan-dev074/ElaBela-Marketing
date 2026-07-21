@@ -92,7 +92,7 @@ export function ProjectCard({
         data-project-progress-rail="true"
         aria-hidden="true"
         initial={false}
-        animate={{ scaleX: railScale, opacity: railOpacity }}
+        animate={reducedMotion ? { opacity: railOpacity } : { scaleX: railScale, opacity: railOpacity }}
         transition={{ duration: reducedMotion ? 0 : 0.24, ease: EASE }}
         className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-px origin-left ${
           project.status === "done"

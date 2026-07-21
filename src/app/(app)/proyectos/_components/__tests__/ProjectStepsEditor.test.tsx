@@ -4,11 +4,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@/lib/data";
 import { ProjectStepsEditor } from "@/app/(app)/proyectos/_components/ProjectStepsEditor";
 
-let reducedMotion = false;
+const motionState = vi.hoisted(() => ({
+  reduced: false,
+  animations: [] as Array<Record<string, unknown> | undefined>,
+}));
 
 vi.mock("framer-motion", async () => {
   const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion");
-  return { ...actual, useReducedMotion: () => reducedMotion };
+  const ReactModule = await import("react");
+  const MotionDiv = ReactModule.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & {
+    animate?: unknown;
+    initial?: unknown;
+    exit?: unknown;
+  }>(function MotionDiv({ animate, initial: _initial, exit: _exit, ...props }, ref) {
+    motionState.animations.push(animate as Record<string, unknown> | undefined);
+    return <div ref={ref} {...props} />;
+  });
+  return {
+    ...actual,
+    useReducedMotion: () => motionState.reduced,
+    motion: new Proxy(actual.motion, {
+      get(target, property, receiver) {
+        if (property === "div") return MotionDiv;
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+  };
 });
 
 function EditorHarness({ initial, disabled = false }: { initial: Project["steps"]; disabled?: boolean }) {
@@ -18,7 +39,8 @@ function EditorHarness({ initial, disabled = false }: { initial: Project["steps"
 
 describe("ProjectStepsEditor", () => {
   beforeEach(() => {
-    reducedMotion = false;
+    motionState.reduced = false;
+    motionState.animations.length = 0;
   });
 
   it("renders the first blank route as Paso 01", () => {
@@ -100,9 +122,10 @@ describe("ProjectStepsEditor", () => {
   });
 
   it("removes insertion translation and scale when reduced motion is preferred", () => {
-    reducedMotion = true;
+    motionState.reduced = true;
     const { container } = render(<EditorHarness initial={[{ label: "Planificar", done: false }]} />);
 
     expect(container.querySelector("[data-motion='reduced']")).toBeInTheDocument();
+    expect(motionState.animations.some((animation) => "y" in (animation ?? {}) || "scale" in (animation ?? {}))).toBe(false);
   });
 });

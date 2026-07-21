@@ -80,7 +80,9 @@ export function ProjectStepList({
                   ) : (
                     <motion.span
                       initial={false}
-                      animate={{ scale: step.done ? 1 : 0.9, opacity: step.done ? 1 : 0.76 }}
+                      animate={reducedMotion
+                        ? { opacity: step.done ? 1 : 0.76 }
+                        : { scale: step.done ? 1 : 0.9, opacity: step.done ? 1 : 0.76 }}
                       transition={{ duration: reducedMotion ? 0 : 0.18, ease: MOTION_EASE }}
                       className="flex items-center justify-center"
                       aria-hidden="true"

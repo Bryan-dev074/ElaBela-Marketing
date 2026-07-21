@@ -8,6 +8,7 @@ import { ProjectCard } from "../ProjectCard";
 const motionState = vi.hoisted(() => ({
   reduced: false,
   transitions: [] as Array<Record<string, unknown> | undefined>,
+  animations: [] as Array<Record<string, unknown> | undefined>,
 }));
 
 vi.mock("framer-motion", async () => {
@@ -18,8 +19,9 @@ vi.mock("framer-motion", async () => {
     whileHover?: unknown;
     whileTap?: unknown;
     transition?: Record<string, unknown>;
-  }>(function MotionElement({ animate: _animate, initial: _initial, whileHover: _whileHover, whileTap: _whileTap, transition, ...props }, ref) {
+  }>(function MotionElement({ animate, initial: _initial, whileHover: _whileHover, whileTap: _whileTap, transition, ...props }, ref) {
     motionState.transitions.push(transition);
+    motionState.animations.push(animate as Record<string, unknown> | undefined);
     return React.createElement(tag, { ...props, ref });
   });
   return {
@@ -31,8 +33,9 @@ vi.mock("framer-motion", async () => {
         animate?: unknown;
         initial?: unknown;
         transition?: Record<string, unknown>;
-      }>(function MotionCircle({ animate: _animate, initial: _initial, transition, ...props }, ref) {
+      }>(function MotionCircle({ animate, initial: _initial, transition, ...props }, ref) {
         motionState.transitions.push(transition);
+        motionState.animations.push(animate as Record<string, unknown> | undefined);
         return <circle ref={ref} {...props} />;
       }),
     },
@@ -102,6 +105,7 @@ describe("ProjectCard", () => {
   beforeEach(() => {
     motionState.reduced = false;
     motionState.transitions.length = 0;
+    motionState.animations.length = 0;
   });
 
   it("uses an explicit opening surface without nesting actions in a control", () => {
@@ -190,6 +194,7 @@ describe("ProjectCard", () => {
 
     expect(motionState.transitions).toContainEqual(expect.objectContaining({ duration: 0, delay: 0 }));
     expect(motionState.transitions.some((transition) => transition?.delay === 0.27)).toBe(false);
+    expect(motionState.animations.some((animation) => "scaleX" in (animation ?? {}))).toBe(false);
   });
 
   it("uses the same restrained CSS lift for hover and focus-within without motion transforms", () => {

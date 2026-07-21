@@ -7,6 +7,7 @@ import { ProjectStepList } from "../ProjectStepList";
 const motionState = vi.hoisted(() => ({
   reduced: false,
   transitions: [] as Array<Record<string, unknown> | undefined>,
+  animations: [] as Array<Record<string, unknown> | undefined>,
 }));
 
 vi.mock("framer-motion", async () => {
@@ -18,8 +19,9 @@ vi.mock("framer-motion", async () => {
         animate?: unknown;
         initial?: unknown;
         transition?: Record<string, unknown>;
-      }>(function MotionSpan({ animate: _animate, initial: _initial, transition, ...props }, ref) {
+      }>(function MotionSpan({ animate, initial: _initial, transition, ...props }, ref) {
         motionState.transitions.push(transition);
+        motionState.animations.push(animate as Record<string, unknown> | undefined);
         return <span ref={ref} {...props} />;
       }),
     },
@@ -45,6 +47,7 @@ describe("ProjectStepList", () => {
   beforeEach(() => {
     motionState.reduced = false;
     motionState.transitions.length = 0;
+    motionState.animations.length = 0;
   });
 
   it("limits compact lists to four rows and opens the remaining steps action", () => {
@@ -104,5 +107,6 @@ describe("ProjectStepList", () => {
 
     expect(motionState.transitions).toContainEqual(expect.objectContaining({ duration: 0 }));
     expect(motionState.transitions.some((transition) => transition?.type === "spring")).toBe(false);
+    expect(motionState.animations.some((animation) => "scale" in (animation ?? {}))).toBe(false);
   });
 });

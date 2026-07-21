@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   FileText, FolderKanban, ListChecks, Plus,
 } from "lucide-react";
@@ -36,6 +36,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const displayUsername = (username: string) => username.charAt(0).toUpperCase() + username.slice(1);
 
 function ProgressRing({ pct, size = 52, stroke = 4 }: { pct: number; size?: number; stroke?: number }) {
+  const reducedMotion = useReducedMotion();
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.min(100, Math.max(0, pct));
@@ -49,6 +50,7 @@ function ProgressRing({ pct, size = 52, stroke = 4 }: { pct: number; size?: numb
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: circumference * (1 - clamped / 100) }}
+          transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.23, 1, 0.32, 1] }}
         />
       </svg>
       <span className="num absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-nude">{clamped}%</span>

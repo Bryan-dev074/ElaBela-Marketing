@@ -16,6 +16,35 @@ const addAsync = vi.fn();
 const removeAsync = vi.fn();
 let projects: Project[] = [];
 
+const motionState = vi.hoisted(() => ({
+  reduced: false,
+  transitions: [] as Array<Record<string, unknown> | undefined>,
+}));
+
+vi.mock("framer-motion", async () => {
+  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion");
+  const ReactModule = await import("react");
+  const Circle = ReactModule.forwardRef<SVGCircleElement, React.SVGProps<SVGCircleElement> & {
+    animate?: unknown;
+    initial?: unknown;
+    transition?: Record<string, unknown>;
+  }>(function MotionCircle({ animate: _animate, initial: _initial, transition, ...props }, ref) {
+    motionState.transitions.push(transition);
+    return <circle ref={ref} {...props} />;
+  });
+
+  return {
+    ...actual,
+    useReducedMotion: () => motionState.reduced,
+    motion: new Proxy(actual.motion, {
+      get(target, property, receiver) {
+        if (property === "circle") return Circle;
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+  };
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -104,6 +133,8 @@ describe("ProjectsPage", () => {
 
   beforeEach(() => {
     projects = [activeGlow()];
+    motionState.reduced = false;
+    motionState.transitions.length = 0;
     updateAsync.mockReset().mockResolvedValue({ ok: true });
     addAsync.mockReset().mockResolvedValue({ ok: true });
     removeAsync.mockReset().mockResolvedValue({ ok: true });
@@ -123,6 +154,14 @@ describe("ProjectsPage", () => {
     const openProject = screen.getByRole("button", { name: "Abrir proyecto Campaña Glow" });
     expect(openProject).toHaveAttribute("data-cursor", "open");
     expect(openProject).not.toHaveAttribute("data-cursor-color", "#3b82f6");
+  });
+
+  it("makes every projects progress ring immediate when reduced motion is preferred", () => {
+    motionState.reduced = true;
+    render(<ProjectsPage />);
+
+    expect(motionState.transitions).not.toHaveLength(0);
+    expect(motionState.transitions.every((transition) => transition?.duration === 0)).toBe(true);
   });
 
   it("opens the integrated Project Studio from the card surface", () => {

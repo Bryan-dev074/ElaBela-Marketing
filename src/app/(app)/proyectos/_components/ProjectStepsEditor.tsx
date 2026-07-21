@@ -66,7 +66,7 @@ export function ProjectStepsEditor({
                 data-row-id={rowId}
                 data-motion={reducedMotion ? "reduced" : "full"}
                 initial={reducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
+                animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4, scale: 0.98 }}
                 transition={{ duration: reducedMotion ? 0 : 0.16 }}
                 className="group relative grid grid-cols-[5rem_minmax(0,1fr)_2.75rem] items-center gap-2 rounded-xl border border-white/[0.07] bg-black/[0.08] p-2 focus-within:border-[#d6ab99]/45 focus-within:bg-[#d6ab99]/[0.04]"

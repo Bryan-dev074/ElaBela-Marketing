@@ -1,14 +1,48 @@
 import React, { useRef, useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterAll, beforeAll, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 import { IconPicker } from "@/components/IconPicker";
 import { TimePicker } from "@/components/TimePicker";
 import { Modal } from "@/components/ui";
+
+const motionState = vi.hoisted(() => ({
+  reduced: false,
+  transitions: [] as Array<Record<string, unknown> | undefined>,
+}));
+
+vi.mock("framer-motion", async () => {
+  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion");
+  const ReactModule = await import("react");
+  const MotionDiv = ReactModule.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & {
+    animate?: unknown;
+    initial?: unknown;
+    exit?: unknown;
+    transition?: Record<string, unknown>;
+  }>(function MotionDiv({ animate: _animate, initial: _initial, exit: _exit, transition, ...props }, ref) {
+    motionState.transitions.push(transition);
+    return <div ref={ref} {...props} />;
+  });
+  return {
+    ...actual,
+    useReducedMotion: () => motionState.reduced,
+    motion: new Proxy(actual.motion, {
+      get(target, property, receiver) {
+        if (property === "div") return MotionDiv;
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+  };
+});
 
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 
 beforeAll(() => {
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+});
+
+beforeEach(() => {
+  motionState.reduced = false;
+  motionState.transitions.length = 0;
 });
 
 afterAll(() => {
@@ -69,6 +103,14 @@ function TimePickerModalHarness() {
 }
 
 describe("Modal", () => {
+  it("makes every modal transition immediate when reduced motion is preferred", () => {
+    motionState.reduced = true;
+    render(<Modal open onClose={vi.fn()} title="Modal accesible">Contenido</Modal>);
+
+    expect(motionState.transitions).not.toHaveLength(0);
+    expect(motionState.transitions.every((transition) => transition?.duration === 0)).toBe(true);
+  });
+
   it("supports a mobile-safe studio surface without changing dialog semantics", () => {
     render(
       <Modal open onClose={vi.fn()} title="Project Studio" size="studio">

@@ -414,7 +414,7 @@ export function Modal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: reducedMotion ? 0 : 0.15 }}
             onClick={onClose}
             aria-hidden="true"
             className="absolute inset-0 bg-black/70 backdrop-blur-md"
@@ -436,7 +436,7 @@ export function Modal({
                 initial={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 12 }}
                 animate={reducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
                 exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
-                transition={{ duration: reducedMotion ? 0.12 : 0.2, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: reducedMotion ? 0 : 0.2, ease: [0.16, 1, 0.3, 1] }}
                 className="glass flex max-h-[calc(100dvh-1rem)] w-full flex-col rounded-2xl shadow-pop sm:max-h-[calc(100dvh-2rem)]"
               >
                 <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] p-5">
