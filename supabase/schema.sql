@@ -357,6 +357,7 @@ create table if not exists public.credentials (
   id_type text default 'email' check (id_type in ('email','usuario')),
   identifier text,
   secret text,
+  url text,
   scope text not null default 'private' check (scope in ('shared','private')),
   created_at timestamptz not null default now()
 );
@@ -364,6 +365,7 @@ alter table public.credentials add column if not exists icon text default '🔑'
 alter table public.credentials add column if not exists id_type text default 'email';
 alter table public.credentials add column if not exists identifier text;
 alter table public.credentials add column if not exists secret text;
+alter table public.credentials add column if not exists url text;
 alter table public.credentials add column if not exists scope text not null default 'private';
 alter table public.credentials enable row level security;
 -- compartidas: las ve/edita todo el equipo; privadas: SOLO el dueño (ni el admin).

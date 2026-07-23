@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, Eye, EyeOff, Globe, Lock, Pencil, Plus, Settings2, ShieldCheck, Trash2 } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, ExternalLink, Globe, Lock, Pencil, Plus, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { CredentialCategoryManager } from "@/components/CredentialCategoryManager";
 import { IconPicker } from "@/components/IconPicker";
 import { Button, Card, Field, IconGlyph, Input, Modal, PageHeader, Select } from "@/components/ui";
@@ -27,7 +27,18 @@ import {
 import type { Role } from "@/lib/brand";
 
 type Cred = CredRow;
-const empty = (scope: CredentialScope): Cred => ({ id: "", platform: "", icon: "🔑", idType: "email", identifier: "", secret: "", scope });
+const empty = (scope: CredentialScope): Cred => ({ id: "", platform: "", icon: "🔑", idType: "email", identifier: "", secret: "", url: "", scope });
+
+function getSafeCredentialUrl(value?: string) {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function nextCredentialId() {
   return crypto.randomUUID?.() ?? `credential-${Date.now()}`;
@@ -93,6 +104,7 @@ function Row({
   }, []);
 
   const configured = credential.identifier || credential.secret;
+  const safeUrl = getSafeCredentialUrl(credential.url);
   const copy = async (value: string, key: string) => {
     if (!value || !navigator.clipboard) return;
     try {
@@ -129,16 +141,9 @@ function Row({
         {configured ? (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-xs text-[var(--muted)]">
             <span className="capitalize text-[var(--faint)]">{credential.idType}:</span>
-            <button
-              type="button"
-              onClick={() => void copy(credential.identifier, `id-${credential.id}`)}
-              className="press inline-flex items-center gap-1 rounded transition hover:text-white"
-              {...cursorIntentProps("copy")}
-              aria-label={`Copiar ${credential.idType === "email" ? "correo" : "usuario"}`}
-            >
+            <span className="inline-flex items-center gap-1 rounded">
               <RevealValue show={show} value={credential.identifier} hidden={"•".repeat(Math.min(10, (credential.identifier || "······").length))} />
-              {copied === `id-${credential.id}` ? <Check className="h-3 w-3 text-emerald-400" /> : null}
-            </button>
+            </span>
             <span className="text-[var(--faint)]">clave:</span>
             <RevealValue show={show} value={credential.secret} hidden="••••••••" />
           </div>
@@ -152,11 +157,15 @@ function Row({
             <button type="button" onClick={() => setShow((current) => !current)} className={iconButton} aria-label={show ? "Ocultar valores" : "Mostrar valores"} {...cursorIntentProps("open", show ? "Ocultar" : "Mostrar")}>
               {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
+            <button type="button" onClick={() => void copy(credential.identifier, `id-${credential.id}`)} disabled={!credential.identifier} className={iconButton} aria-label={`Copiar ${credential.idType === "email" ? "correo" : "usuario"}`} {...cursorIntentProps("copy")}>
+              <CopyIcon done={copied === `id-${credential.id}`} />
+            </button>
             <button type="button" onClick={() => void copy(credential.secret, `sec-${credential.id}`)} className={iconButton} aria-label="Copiar contraseña" {...cursorIntentProps("copy")}>
               <CopyIcon done={copied === `sec-${credential.id}`} />
             </button>
           </>
         ) : null}
+        {safeUrl ? <a href={safeUrl} target="_blank" rel="noreferrer" className={iconButton} aria-label={`Abrir enlace de ${credential.platform}`} title="Abrir enlace" {...cursorIntentProps("open", "Abrir enlace")}><ExternalLink className="h-3.5 w-3.5" /></a> : null}
         <button type="button" onClick={onEdit} disabled={disabled || deleting} className={iconButton} aria-label="Editar acceso" {...cursorIntentProps("edit")}>
           <Pencil className="h-3.5 w-3.5" />
         </button>
@@ -271,6 +280,11 @@ export default function CredencialesView({ role, ownerId }: { role: Role; ownerI
       ownerId: editing.scope === "private" ? ownerId : undefined,
       categoryId: categoryIdAfterScopeChange(editing.categoryId, editing.scope, categoriesStore.items, ownerId),
     };
+    if (editing.url?.trim() && !getSafeCredentialUrl(editing.url)) {
+      setMutationError("La URL debe comenzar con http:// o https://.");
+      return;
+    }
+    credential.url = editing.url?.trim() || undefined;
     setSaving(true);
     setMutationError(null);
     credentialsStore.clearError();
@@ -422,6 +436,7 @@ export default function CredencialesView({ role, ownerId }: { role: Role; ownerI
             <Field label="Tipo de identificador"><Select disabled={saving} value={editing.idType} onChange={(event) => setEditing({ ...editing, idType: event.target.value as Cred["idType"] })}><option value="email">Correo</option><option value="usuario">Usuario</option></Select></Field>
             <Field label={editing.idType === "email" ? "Correo" : "Usuario"}><Input disabled={saving} value={editing.identifier} onChange={(event) => setEditing({ ...editing, identifier: event.target.value })} placeholder={editing.idType === "email" ? "correo@ejemplo.com" : "@usuario"} /></Field>
             <Field label="Contraseña"><Input disabled={saving} value={editing.secret} onChange={(event) => setEditing({ ...editing, secret: event.target.value })} placeholder="••••••••" /></Field>
+            <Field label="URL de acceso (opcional)"><Input disabled={saving} type="url" value={editing.url ?? ""} onChange={(event) => setEditing({ ...editing, url: event.target.value })} placeholder="https://app.ejemplo.com" /></Field>
           </div>
         ) : null}
       </Modal>

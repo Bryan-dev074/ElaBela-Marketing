@@ -23,7 +23,7 @@ vi.mock("@/lib/db", async (importOriginal) => {
     ...actual,
     useCredentials: () => ({
       items: [
-        { id: "google", platform: "Google", icon: "🔑", idType: "email", identifier: "team@example.com", secret: "clave-google", scope: "shared", categoryId: "social" },
+        { id: "google", platform: "Google", icon: "🔑", idType: "email", identifier: "team@example.com", secret: "clave-google", url: "https://accounts.google.com", scope: "shared", categoryId: "social" },
         { id: "orphan", platform: "Huérfana", icon: "🔑", idType: "usuario", identifier: "team", secret: "clave", scope: "shared", categoryId: "missing" },
         { id: "mismatch", platform: "Incompatible", icon: "🔑", idType: "usuario", identifier: "team", secret: "clave", scope: "shared", categoryId: "personal" },
         { id: "bank", platform: "Banco", icon: "🔒", idType: "usuario", identifier: "yo", secret: "privada", scope: "private", ownerId: "user-1", categoryId: "personal" },
@@ -137,5 +137,28 @@ describe("CredencialesView categories and preserved actions", () => {
     expect(mocks.removeAsync).toHaveBeenCalledWith("google");
     expect(within(row).getByRole("button", { name: "Eliminando acceso" })).toBeDisabled();
     await act(async () => finishDelete?.({ ok: true }));
+  });
+
+  it("copies the email with an explicit action and exposes the direct access link", async () => {
+    render(<CredencialesView role="marketer" ownerId="user-1" />);
+    const row = screen.getByText("Google").closest("[data-credential-row]") as HTMLElement;
+
+    fireEvent.click(within(row).getByRole("button", { name: "Copiar correo" }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("team@example.com"));
+
+    const link = within(row).getByRole("link", { name: "Abrir enlace de Google" });
+    expect(link).toHaveAttribute("href", "https://accounts.google.com/");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noreferrer");
+  });
+
+  it("persists an optional access URL from the editor", async () => {
+    render(<CredencialesView role="marketer" ownerId="user-1" />);
+    const row = screen.getByText("Google").closest("[data-credential-row]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Editar acceso" }));
+    fireEvent.change(screen.getByLabelText("URL de acceso (opcional)"), { target: { value: "https://admin.google.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(mocks.updateAsync).toHaveBeenCalledWith("google", expect.objectContaining({ url: "https://admin.google.com" })));
   });
 });

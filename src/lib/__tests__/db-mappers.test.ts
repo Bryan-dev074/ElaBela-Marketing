@@ -266,4 +266,25 @@ describe("credential category compatibility mapping", () => {
     expect(credentialToRow({ ...credential, scope: "shared", categoryId: "social" }, "user-1")).toMatchObject({ owner_id: null, category_id: "social" });
     expect(credentialToRow({ ...credential, scope: "private", categoryId: "personal" }, "user-1")).toMatchObject({ owner_id: "user-1", category_id: "personal" });
   });
+
+  it("round-trips an optional direct access URL", () => {
+    const credential = credentialFromRow({
+      id: "credential-url",
+      platform: "Metricool",
+      icon: "🔗",
+      id_type: "email",
+      identifier: "team@example.com",
+      secret: "secret",
+      url: "https://app.metricool.com",
+      scope: "shared",
+      owner_id: null,
+      category_id: null,
+    });
+
+    expect(credential.url).toBe("https://app.metricool.com");
+    expect(credentialToRow(credential, "user-1")).toMatchObject({
+      url: "https://app.metricool.com",
+      owner_id: null,
+    });
+  });
 });

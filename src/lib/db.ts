@@ -643,7 +643,7 @@ export const useBrandAssets = () =>
     toRow: brandAssetToRow,
   });
 
-export interface CredRow { id: string; platform: string; icon: string; idType: "email" | "usuario"; identifier: string; secret: string; scope: "shared" | "private"; ownerId?: string; categoryId?: string }
+export interface CredRow { id: string; platform: string; icon: string; idType: "email" | "usuario"; identifier: string; secret: string; url?: string; scope: "shared" | "private"; ownerId?: string; categoryId?: string }
 
 export function credentialFromRow(r: Record<string, unknown>): CredRow {
   return {
@@ -653,6 +653,7 @@ export function credentialFromRow(r: Record<string, unknown>): CredRow {
     idType: (r.id_type as "email" | "usuario") || "email",
     identifier: (r.identifier as string) || "",
     secret: (r.secret as string) || "",
+    url: (r.url as string) || undefined,
     scope: (r.scope as "shared" | "private") || "private",
     ownerId: (r.owner_id as string) || undefined,
     categoryId: (r.category_id as string) || undefined,
@@ -667,6 +668,7 @@ export function credentialToRow(c: CredRow, ownerId: string): Record<string, unk
     id_type: c.idType,
     identifier: c.identifier ?? null,
     secret: c.secret ?? null,
+    url: c.url?.trim() || null,
     scope: c.scope,
     owner_id: c.scope === "private" ? (c.ownerId || ownerId || null) : null,
     category_id: c.categoryId ?? null,
