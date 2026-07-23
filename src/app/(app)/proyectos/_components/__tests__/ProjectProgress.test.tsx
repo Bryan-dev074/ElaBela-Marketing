@@ -97,6 +97,13 @@ describe("ProjectProgress", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
   });
 
+  it("ignores blank placeholder steps when calculating progress", () => {
+    render(<ProjectProgress project={project({ status: "doing", steps: [{ label: "  ", done: false }] })} />);
+
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+  });
+
   it("marks steps projects without steps as complete when done", () => {
     render(<ProjectProgress project={project({ status: "done", steps: [] })} />);
 
@@ -113,7 +120,7 @@ describe("ProjectProgress", () => {
   });
 
   it("keeps the zero-step label visible inside the compact ring for pending projects", () => {
-    render(<ProjectProgress project={project({ steps: [] })} compact />);
+    render(<ProjectProgress project={project({ status: "todo", steps: [] })} compact />);
 
     expect(screen.getByText("Sin pasos")).toBeVisible();
     expect(screen.queryByText(/0\s?%/)).not.toBeInTheDocument();

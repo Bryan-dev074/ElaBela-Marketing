@@ -23,8 +23,11 @@ export function getProjectProgress(project: Project): {
     return { completed: 0, total: 0, percentage: 0, determinate: false };
   }
 
-  const total = project.steps.length;
-  const completed = project.steps.filter(({ done }) => done).length;
+  // Older rows can keep the editor's empty placeholder step. It is not real
+  // work and must not turn an empty checklist into a misleading 0% project.
+  const meaningfulSteps = project.steps.filter(({ label }) => typeof label === "string" && label.trim().length > 0);
+  const total = meaningfulSteps.length;
+  const completed = meaningfulSteps.filter(({ done }) => done).length;
   if (total === 0) {
     if (project.status === "doing") {
       return { completed: 0, total: 0, percentage: 50, determinate: true };

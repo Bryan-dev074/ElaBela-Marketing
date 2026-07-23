@@ -9,8 +9,9 @@ import {
 import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, Reveal } from "@/components/ui";
 import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, OwnerPicker } from "@/components/Avatar";
-import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Project, type Guion } from "@/lib/data";
+import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Guion } from "@/lib/data";
 import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
+import { calendarProjectEntries, schedulableProjectTray, upcomingFestiveDates, type CalendarProjectEntry } from "@/lib/calendar";
 import { useToday } from "@/lib/useToday";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -21,7 +22,7 @@ const dayLabel = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("es
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Agenda de un día: todo lo que cae en esa fecha, agrupado por origen. */
-type DayAgenda = { special: SpecialDate[]; projects: Project[]; guiones: Guion[]; events: CalEventRow[] };
+type DayAgenda = { special: SpecialDate[]; projects: CalendarProjectEntry[]; guiones: Guion[]; events: CalEventRow[] };
 const EMPTY_AGENDA: DayAgenda = { special: [], projects: [], guiones: [], events: [] };
 
 const monthVariants = {
@@ -47,6 +48,7 @@ export default function CalendarioPage() {
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  const [trayExpanded, setTrayExpanded] = useState(false);
 
   const { items: projects, update: updateProject } = useProjects();
   const { items: guiones } = useGuiones();
@@ -62,6 +64,8 @@ export default function CalendarioPage() {
   };
   const todayType = typeFor(now.getFullYear(), now.getMonth(), now.getDate());
 
+  const projectEntries = useMemo(() => calendarProjectEntries(projects), [projects]);
+
   /** Índice fecha → agenda armado en UNA pasada por colección (no 4 filter() por celda). */
   const agendaByDate = useMemo(() => {
     const map = new Map<string, DayAgenda>();
@@ -71,19 +75,20 @@ export default function CalendarioPage() {
       return e;
     };
     for (const s of SPECIAL_DATES) at(s.date).special.push(s);
-    for (const p of projects) if (p.due && !p.archived) at(p.due).projects.push(p);
+    for (const entry of projectEntries) at(entry.date).projects.push(entry);
     for (const g of guiones) if (g.publish) at(g.publish).guiones.push(g);
     for (const e of events) at(e.date).events.push(e);
     return map;
-  }, [projects, guiones, events]);
+  }, [projectEntries, guiones, events]);
 
   const agenda = (date: string): DayAgenda => agendaByDate.get(date) ?? EMPTY_AGENDA;
 
-  const activeProjects = useMemo(() => projects.filter((p) => !p.archived), [projects]);
   const trayProjects = useMemo(
-    () => [...activeProjects].sort((a, b) => (a.due ? 1 : 0) - (b.due ? 1 : 0) || (a.due ?? "").localeCompare(b.due ?? "")),
-    [activeProjects],
+    () => schedulableProjectTray(projects),
+    [projects],
   );
+  const visibleTrayProjects = trayExpanded ? trayProjects : trayProjects.slice(0, 3);
+  const upcomingHolidays = useMemo(() => upcomingFestiveDates(SPECIAL_DATES, todayIso, 3), [todayIso]);
 
   const grid = useMemo(() => {
     const first = new Date(cursor.y, cursor.m, 1);
@@ -171,6 +176,78 @@ export default function CalendarioPage() {
         title="Calendario"
         description="Tocá un día para ver su agenda, arrastrá un proyecto hasta una celda para fijar su entrega y seguí la rotación de contenido sugerida."
       />
+
+      {/* ============ Semana ampliada ============ */}
+      <section aria-labelledby="calendar-week-title" className="mb-8">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <p className="eyebrow mb-1">Primero, tu semana</p>
+            <h2 id="calendar-week-title" className="text-xl font-semibold text-white">Semana ampliada</h2>
+          </div>
+          <p className="num text-xs text-[var(--faint)]">{fmtShortDate(weekDays[0])} — {fmtShortDate(weekDays[6])}</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+          {weekDays.map((d, i) => {
+            const a = agenda(d);
+            const isToday = d === todayIso;
+            const t = typeForIso(d);
+            const dt = new Date(d + "T00:00:00");
+            return (
+              <Reveal key={d} delay={i * 0.04} className="h-full">
+                <button
+                  onClick={() => setSelected(d)}
+                  {...cursorIntentProps("open", "Ver día")}
+                  className={`card-sheen glass flex h-full min-h-[11rem] w-full flex-col rounded-2xl p-4 text-left transition hover:border-white/20 ${
+                    isToday ? "border-nude/50 shadow-glow-nude" : ""
+                  }`}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-1">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+                        {dt.toLocaleDateString("es-PY", { weekday: "short" })}
+                      </p>
+                      <p className={`num font-display text-xl font-semibold ${isToday ? "glow-text" : "text-white"}`}>{dt.getDate()}</p>
+                    </div>
+                    {t && <span className="text-xs opacity-40" title={t.name}>{t.icon}</span>}
+                  </div>
+                  <div className="w-full space-y-1.5">
+                    {a.special.map((s) => (
+                      <p key={s.date} className="flex items-center gap-1.5 rounded-lg border border-nude/20 bg-nude/10 px-2 py-1.5 text-[11px] text-nude">
+                        <span className="shrink-0 leading-none">{s.emoji}</span>
+                        <span className="truncate">{s.label}</span>
+                      </p>
+                    ))}
+                    {a.projects.map(({ project: p, kind }) => (
+                      <p key={p.id} className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] ${kind === "completed" ? "bg-emerald-500/15 text-emerald-200" : "bg-blue-500/15 text-blue-200"}`}>
+                        <span className={`h-1 w-1 shrink-0 rounded-full ${kind === "completed" ? "bg-emerald-400" : "bg-blue-400"}`} />
+                        <span className="truncate">{kind === "completed" ? "✓ " : ""}{p.name}</span>
+                        <span className="ml-auto shrink-0"><Avatar username={p.owner} size={16} /></span>
+                      </p>
+                    ))}
+                    {a.guiones.map((g) => (
+                      <p key={g.id} className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-[11px] text-emerald-200">
+                        <span className="h-1 w-1 shrink-0 rounded-full bg-emerald-400" />
+                        <span className="truncate">{g.name}</span>
+                        <span className="ml-auto shrink-0"><Avatar username={g.responsible} size={16} /></span>
+                      </p>
+                    ))}
+                    {a.events.map((e) => (
+                      <p key={e.id} className="flex items-center gap-1.5 rounded-lg bg-nude/15 px-2 py-1.5 text-[11px] text-nude">
+                        <span className="h-1 w-1 shrink-0 rounded-full bg-nude" />
+                        <span className="truncate">{e.title}</span>
+                        <span className="ml-auto shrink-0"><Avatar username={e.owner} size={16} /></span>
+                      </p>
+                    ))}
+                    {a.special.length + a.projects.length + a.guiones.length + a.events.length === 0 && (
+                      <p className="text-[11px] text-[var(--faint)]">Libre</p>
+                    )}
+                  </div>
+                </button>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_19rem]">
         {/* ============ Mes ============ */}
@@ -268,7 +345,8 @@ export default function CalendarioPage() {
                       </div>
                       <div className="mt-auto flex items-end justify-between gap-1">
                         <span className="flex flex-wrap gap-0.5">
-                          {a.projects.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />}
+                          {a.projects.some(({ kind }) => kind === "due") && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" title="Entrega de proyecto" />}
+                          {a.projects.some(({ kind }) => kind === "completed") && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Proyecto completado" />}
                           {a.guiones.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
                           {a.events.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-nude" />}
                         </span>
@@ -298,11 +376,11 @@ export default function CalendarioPage() {
               </p>
               {trayProjects.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[11px] text-[var(--faint)]">
-                  No hay proyectos activos. Creá uno en el módulo Proyectos.
+                  No hay proyectos pendientes para agendar. Creá uno en el módulo Proyectos.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {trayProjects.map((p) => (
+                  {visibleTrayProjects.map((p) => (
                     <div
                       key={p.id}
                       draggable
@@ -332,9 +410,52 @@ export default function CalendarioPage() {
                       )}
                     </div>
                   ))}
+                  {trayProjects.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setTrayExpanded((expanded) => !expanded)}
+                      {...cursorIntentProps("open", trayExpanded ? "Mostrar menos proyectos" : "Ver más proyectos")}
+                      className="press mt-1 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] font-medium text-[var(--muted)] transition hover:border-nude/35 hover:bg-white/[0.05] hover:text-white"
+                    >
+                      {trayExpanded ? "Mostrar menos" : `Ver ${trayProjects.length - 3} más`}
+                    </button>
+                  )}
                 </div>
               )}
 
+            </Card>
+          </Reveal>
+
+          <Reveal delay={0.03}>
+            <Card className="p-5" hover={false}>
+              <p className="eyebrow mb-1">Próximamente</p>
+              <h2 className="mb-1 text-base font-semibold text-white">Feriados que se acercan</h2>
+              <p className="mb-4 text-[11px] leading-relaxed text-[var(--faint)]">
+                Una vista rápida de las próximas fechas festivas de Paraguay para anticipar contenido y campañas.
+              </p>
+              {upcomingHolidays.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[11px] text-[var(--faint)]">
+                  No hay feriados cargados para las próximas fechas.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {upcomingHolidays.map((holiday) => {
+                    const days = Math.round((new Date(holiday.date + "T00:00:00").getTime() - new Date(todayIso + "T00:00:00").getTime()) / 86400000);
+                    return (
+                      <div key={holiday.date} className="flex items-center gap-2.5 rounded-xl border border-nude/15 bg-nude/[0.06] px-3 py-2.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-nude/10 text-base">{holiday.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium text-white">{holiday.label}</p>
+                          <p className="num text-[10px] text-[var(--faint)]">{fmtShortDate(holiday.date)}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-nude/20 px-2 py-0.5 text-[10px] font-semibold text-nude">
+                          {days === 0 ? "Hoy" : `En ${days} d.`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           </Reveal>
 
@@ -396,76 +517,6 @@ export default function CalendarioPage() {
         </div>
       </div>
 
-      {/* ============ Semana ampliada ============ */}
-      <div className="mb-4 mt-10 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="eyebrow mb-1">Detalle</p>
-          <h2 className="text-xl font-semibold text-white">Semana ampliada</h2>
-        </div>
-        <p className="num text-xs text-[var(--faint)]">{fmtShortDate(weekDays[0])} — {fmtShortDate(weekDays[6])}</p>
-      </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        {weekDays.map((d, i) => {
-          const a = agenda(d);
-          const isToday = d === todayIso;
-          const t = typeForIso(d);
-          const dt = new Date(d + "T00:00:00");
-          return (
-            <Reveal key={d} delay={i * 0.04} className="h-full">
-              <button
-                onClick={() => setSelected(d)}
-                {...cursorIntentProps("open", "Ver día")}
-                className={`card-sheen glass flex h-full min-h-[11rem] w-full flex-col rounded-2xl p-4 text-left transition hover:border-white/20 ${
-                  isToday ? "border-nude/50 shadow-glow-nude" : ""
-                }`}
-              >
-                <div className="mb-3 flex items-start justify-between gap-1">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-                      {dt.toLocaleDateString("es-PY", { weekday: "short" })}
-                    </p>
-                    <p className={`num font-display text-xl font-semibold ${isToday ? "glow-text" : "text-white"}`}>{dt.getDate()}</p>
-                  </div>
-                  {t && <span className="text-xs opacity-40" title={t.name}>{t.icon}</span>}
-                </div>
-                <div className="w-full space-y-1.5">
-                  {a.special.map((s) => (
-                    <p key={s.date} className="flex items-center gap-1.5 rounded-lg border border-nude/20 bg-nude/10 px-2 py-1.5 text-[11px] text-nude">
-                      <span className="shrink-0 leading-none">{s.emoji}</span>
-                      <span className="truncate">{s.label}</span>
-                    </p>
-                  ))}
-                  {a.projects.map((p) => (
-                    <p key={p.id} className="flex items-center gap-1.5 rounded-lg bg-blue-500/15 px-2 py-1.5 text-[11px] text-blue-200">
-                      <span className="h-1 w-1 shrink-0 rounded-full bg-blue-400" />
-                      <span className="truncate">{p.name}</span>
-                      <span className="ml-auto shrink-0"><Avatar username={p.owner} size={16} /></span>
-                    </p>
-                  ))}
-                  {a.guiones.map((g) => (
-                    <p key={g.id} className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-[11px] text-emerald-200">
-                      <span className="h-1 w-1 shrink-0 rounded-full bg-emerald-400" />
-                      <span className="truncate">{g.name}</span>
-                      <span className="ml-auto shrink-0"><Avatar username={g.responsible} size={16} /></span>
-                    </p>
-                  ))}
-                  {a.events.map((e) => (
-                    <p key={e.id} className="flex items-center gap-1.5 rounded-lg bg-nude/15 px-2 py-1.5 text-[11px] text-nude">
-                      <span className="h-1 w-1 shrink-0 rounded-full bg-nude" />
-                      <span className="truncate">{e.title}</span>
-                      <span className="ml-auto shrink-0"><Avatar username={e.owner} size={16} /></span>
-                    </p>
-                  ))}
-                  {a.special.length + a.projects.length + a.guiones.length + a.events.length === 0 && (
-                    <p className="text-[11px] text-[var(--faint)]">Libre</p>
-                  )}
-                </div>
-              </button>
-            </Reveal>
-          );
-        })}
-      </div>
-
       {/* ============ Modal del día ============ */}
       <Modal
         open={!!selected}
@@ -486,6 +537,8 @@ export default function CalendarioPage() {
         {selected && (() => {
           const a = agenda(selected);
           const t = typeForIso(selected);
+          const dueProjects = a.projects.filter(({ kind }) => kind === "due");
+          const completedProjects = a.projects.filter(({ kind }) => kind === "completed");
           const empty = a.special.length + a.projects.length + a.guiones.length + a.events.length === 0;
           return (
             <div className="space-y-5">
@@ -513,11 +566,11 @@ export default function CalendarioPage() {
                 </div>
               )}
 
-              {a.projects.length > 0 && (
+              {dueProjects.length > 0 && (
                 <div>
                   <p className="eyebrow mb-2">Proyectos (entrega)</p>
                   <div className="space-y-1.5">
-                    {a.projects.map((p) => (
+                    {dueProjects.map(({ project: p }) => (
                       <div key={p.id} className="flex items-center gap-2.5 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2">
                         <FolderKanban className="h-4 w-4 shrink-0 text-blue-300" />
                         <p className="min-w-0 flex-1 truncate text-sm text-white">{p.name}</p>
@@ -535,6 +588,22 @@ export default function CalendarioPage() {
                     ))}
                   </div>
                   <p className="mt-1.5 text-[10px] text-[var(--faint)]">Desagendar solo le quita la fecha; el proyecto no se borra.</p>
+                </div>
+              )}
+
+              {completedProjects.length > 0 && (
+                <div>
+                  <p className="eyebrow mb-2 text-emerald-300">Proyectos finalizados este día</p>
+                  <div className="space-y-1.5">
+                    {completedProjects.map(({ project: p }) => (
+                      <div key={p.id} className="flex items-center gap-2.5 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300">✓</span>
+                        <p className="min-w-0 flex-1 truncate text-sm text-white">{p.name}</p>
+                        <StatePill state="done" />
+                        <Avatar username={p.owner} size={22} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -648,7 +717,7 @@ export default function CalendarioPage() {
           </>
         }
       >
-        {activeProjects.length === 0 ? (
+        {trayProjects.length === 0 ? (
           <EmptyState
             icon={<FolderKanban className="h-5 w-5" />}
             title="No hay proyectos activos"
@@ -657,7 +726,7 @@ export default function CalendarioPage() {
         ) : (
           <div className="space-y-4">
             <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-              {activeProjects.map((p) => {
+              {trayProjects.map((p) => {
                 const on = pickId === p.id;
                 return (
                   <button
