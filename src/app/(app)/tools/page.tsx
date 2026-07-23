@@ -225,7 +225,13 @@ export default function ToolsPage() {
         (!q || i.title.toLowerCase().includes(q) || i.note.toLowerCase().includes(q))
     );
   }, [categories, items, filter, query]);
-  const mediaItems = useMemo(() => shown.filter((item) => item.image), [shown]);
+  const mediaItems = useMemo(
+    () => shown.filter((item) => {
+      const category = categories.find((candidate) => candidate.id === resolveCategoryId(item.categoryId, categories));
+      return category?.kind === "prompt" && !!item.image;
+    }),
+    [categories, shown],
+  );
   const lightboxIndex = lightboxId ? mediaItems.findIndex((item) => item.id === lightboxId) : -1;
   const activeLightboxItem = lightboxIndex >= 0 ? mediaItems[lightboxIndex] : null;
   const isFiltering = filter !== "all" || query.trim() !== "";
@@ -289,9 +295,10 @@ export default function ToolsPage() {
     setMutationError(null);
     setMutationNotice(null);
     const uploadedUrls: string[] = [];
-    let image = editing.image;
+    const usesImage = category.kind === "prompt";
+    let image = usesImage ? editing.image : "";
     let icon = editing.icon;
-    if (pendingImage) {
+    if (usesImage && pendingImage) {
       const uploaded = await uploadAsset(pendingImage, "tools");
       if (!uploaded.ok) {
         setMutationError(uploaded.error);
@@ -657,8 +664,6 @@ export default function ToolsPage() {
                   </div>
                 </div>
 
-                <ToolMedia item={item} onView={() => setLightboxId(item.id)} />
-
                 <div className="pointer-events-none relative z-[1] mt-4 flex items-start gap-3.5">
                   <LinkVisual item={item} accent={accent} />
                   <div className="min-w-0 flex-1">
@@ -782,7 +787,10 @@ export default function ToolsPage() {
                 <Field label="Categoría">
                   <Select value={editing.categoryId} onChange={(e) => {
                     const category = categoryById(e.target.value);
-                    if (category) setEditing({ ...editing, category: category.id, categoryId: category.id, kind: category.kind });
+                    if (category) {
+                      if (category.kind === "link") setPendingImage(null);
+                      setEditing({ ...editing, category: category.id, categoryId: category.id, kind: category.kind, image: category.kind === "prompt" ? editing.image : "" });
+                    }
                   }}>
                     <option value="" disabled>Elegí una categoría…</option>
                     {categories.map((category) => (
@@ -840,29 +848,31 @@ export default function ToolsPage() {
                 {editingHost && <p className="mt-1.5 text-[11px] text-[var(--faint)]">Se detectó {editingHost} — ese favicon va a ilustrar la tarjeta.</p>}
               </Field>
             )}
-            <Field label="Imagen (opcional)">
-              <div className="flex items-center gap-3">
-                {editing.image && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={editing.image} alt="" className="h-16 w-16 rounded-lg border border-white/10 object-cover" />
-                )}
-                <input ref={fileRef} type="file" accept="image/*" onChange={onImage} className="hidden" />
-                <Button variant="subtle" type="button" onClick={() => fileRef.current?.click()}>
-                  <ImagePlus className="h-4 w-4" /> {editing.image ? "Cambiar" : "Subir imagen"}
-                </Button>
-                {editing.image && (
-                  <button
-                    type="button"
-                    onClick={() => { setPendingImage(null); setEditing({ ...editing, image: "" }); }}
-                    className="text-xs text-[var(--faint)] transition hover:text-red-300"
-                  >
-                    Quitar
-                  </button>
-                )}
-              </div>
-              {imgErr && <p role="alert" className="mt-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300">{imgErr}</p>}
-              <p className="mt-1.5 text-[11px] text-[var(--faint)]">Los GIF conservan su animación. La imagen se ve en grande tocándola en la tarjeta.</p>
-            </Field>
+            {categoryById(editing.categoryId)?.kind === "prompt" ? (
+              <Field label="Imagen (opcional)">
+                <div className="flex items-center gap-3">
+                  {editing.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={editing.image} alt="" className="h-16 w-16 rounded-lg border border-white/10 object-cover" />
+                  )}
+                  <input ref={fileRef} type="file" accept="image/*" onChange={onImage} className="hidden" />
+                  <Button variant="subtle" type="button" onClick={() => fileRef.current?.click()}>
+                    <ImagePlus className="h-4 w-4" /> {editing.image ? "Cambiar" : "Subir imagen"}
+                  </Button>
+                  {editing.image && (
+                    <button
+                      type="button"
+                      onClick={() => { setPendingImage(null); setEditing({ ...editing, image: "" }); }}
+                      className="text-xs text-[var(--faint)] transition hover:text-red-300"
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+                {imgErr && <p role="alert" className="mt-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-300">{imgErr}</p>}
+                <p className="mt-1.5 text-[11px] text-[var(--faint)]">Los GIF conservan su animación. La imagen se ve en grande tocándola en la tarjeta.</p>
+              </Field>
+            ) : null}
           </div>
         )}
       </Modal>

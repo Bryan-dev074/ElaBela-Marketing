@@ -22,7 +22,7 @@ vi.mock("@/lib/db", async (importOriginal) => {
     ...actual,
     useToolItems: () => ({
       items: [
-        { id: "prompt-1", category: "prompts", categoryId: "prompts", kind: "prompt", title: "Prompt visible", note: "Copiar", href: "https://prompt.example.com/", image: "prompt.jpg", icon: "", steps: "Paso" },
+        { id: "prompt-1", category: "prompts", categoryId: "prompts", kind: "prompt", title: "Prompt visible", note: "Copiar", href: "https://prompt.example.com/", image: "https://example.supabase.co/storage/v1/object/public/elabela-assets/tools/prompt.jpg", icon: "", steps: "Paso" },
         { id: "app-1", category: "apps", categoryId: "apps", kind: "link", title: "App visible", note: "Abrir", href: "https://example.com", image: "https://example.supabase.co/storage/v1/object/public/elabela-assets/tools/app.jpg", icon: "", steps: "Pasos dormidos" },
         { id: "lost-1", category: "missing", categoryId: "missing", kind: "link", title: "Recurso huérfano", note: "", href: "", image: "", icon: "", steps: "" },
       ],
@@ -94,6 +94,19 @@ describe("ToolsPage dynamic categories", () => {
     expect(screen.getByRole("link", { name: "Abrir App visible" })).toHaveAttribute("href", "https://example.com/");
   });
 
+  it("keeps app cards icon-led and removes legacy images when saved", async () => {
+    render(<ToolsPage />);
+    const appCard = screen.getByText("App visible").closest("article");
+    expect(appCard).not.toBeNull();
+    expect(within(appCard!).queryByRole("button", { name: "Ver imagen de App visible" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(appCard!).getByRole("button", { name: "Editar recurso" }));
+    expect(screen.queryByText("Imagen (opcional)")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() => expect(mocks.updateAsync).toHaveBeenCalledWith("app-1", expect.objectContaining({ image: "" })));
+  });
+
   it("keeps long prompt previews compact without changing the copy action", () => {
     render(<ToolsPage />);
 
@@ -120,9 +133,7 @@ describe("ToolsPage dynamic categories", () => {
     fireEvent.click(media);
     expect(screen.getByRole("dialog", { name: "Prompt visible" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Prompt visible" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Imagen siguiente" }));
-    expect(screen.getByRole("dialog", { name: "App visible" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "App visible" })).toHaveAttribute("src", "https://example.supabase.co/storage/v1/object/public/elabela-assets/tools/app.jpg");
+    expect(screen.queryByRole("button", { name: "Imagen siguiente" })).not.toBeInTheDocument();
   });
 
   it("leaves local category order untouched when the reorder transaction fails", async () => {
@@ -184,10 +195,9 @@ describe("ToolsPage dynamic categories", () => {
     mocks.updateAsync.mockResolvedValueOnce({ ok: false, error: "No se pudo guardar." });
     mocks.removeAssetByPublicUrl.mockResolvedValueOnce({ ok: false, error: "No se pudo borrar la imagen nueva." });
     const { container } = render(<ToolsPage />);
-    fireEvent.click(screen.getByRole("button", { name: /Apps\s+1/ }));
-    const appCard = screen.getByText("App visible").closest("article");
-    expect(appCard).not.toBeNull();
-    fireEvent.click(within(appCard!).getByRole("button", { name: "Editar recurso" }));
+    const promptCard = screen.getByText("Prompt visible").closest("article");
+    expect(promptCard).not.toBeNull();
+    fireEvent.click(within(promptCard!).getByRole("button", { name: "Editar recurso" }));
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     expect(input).not.toBeNull();
     fireEvent.change(input!, { target: { files: [new File(["image"], "tool.png", { type: "image/png" })] } });
@@ -204,9 +214,8 @@ describe("ToolsPage dynamic categories", () => {
       .mockResolvedValueOnce({ ok: false, error: "No se pudo subir el ícono." });
     mocks.removeAssetByPublicUrl.mockResolvedValueOnce({ ok: false, error: "No se pudo borrar la imagen nueva." });
     const { container } = render(<ToolsPage />);
-    fireEvent.click(screen.getByRole("button", { name: /Apps\s+1/ }));
-    const appCard = screen.getByText("App visible").closest("article");
-    fireEvent.click(within(appCard!).getByRole("button", { name: "Editar recurso" }));
+    const promptCard = screen.getByText("Prompt visible").closest("article");
+    fireEvent.click(within(promptCard!).getByRole("button", { name: "Editar recurso" }));
     fireEvent.click(screen.getByRole("button", { name: "Usar ícono personalizado" }));
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     fireEvent.change(input!, { target: { files: [new File(["image"], "tool.png", { type: "image/png" })] } });
@@ -220,9 +229,8 @@ describe("ToolsPage dynamic categories", () => {
   it("closes the editor and reports a warning when old-asset cleanup fails after persistence", async () => {
     mocks.removeAssetByPublicUrl.mockResolvedValueOnce({ ok: false, error: "No se pudo borrar la imagen anterior." });
     const { container } = render(<ToolsPage />);
-    fireEvent.click(screen.getByRole("button", { name: /Apps\s+1/ }));
-    const appCard = screen.getByText("App visible").closest("article");
-    fireEvent.click(within(appCard!).getByRole("button", { name: "Editar recurso" }));
+    const promptCard = screen.getByText("Prompt visible").closest("article");
+    fireEvent.click(within(promptCard!).getByRole("button", { name: "Editar recurso" }));
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     fireEvent.change(input!, { target: { files: [new File(["image"], "tool.png", { type: "image/png" })] } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
