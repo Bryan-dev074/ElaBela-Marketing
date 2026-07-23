@@ -101,6 +101,7 @@ describe("ToolsPage dynamic categories", () => {
     const preview = promptCard?.querySelector("[data-prompt-preview]");
     expect(preview).not.toBeNull();
     expect(preview).toHaveClass("line-clamp-4");
+    expect(preview).not.toHaveClass("block");
     expect(within(promptCard!).getAllByRole("button", { name: "Copiar prompt Prompt visible" })).toHaveLength(2);
   });
 
