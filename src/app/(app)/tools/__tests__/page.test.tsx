@@ -94,6 +94,16 @@ describe("ToolsPage dynamic categories", () => {
     expect(screen.getByRole("link", { name: "Abrir App visible" })).toHaveAttribute("href", "https://example.com/");
   });
 
+  it("keeps long prompt previews compact without changing the copy action", () => {
+    render(<ToolsPage />);
+
+    const promptCard = screen.getByText("Prompt visible").closest("article");
+    const preview = promptCard?.querySelector("[data-prompt-preview]");
+    expect(preview).not.toBeNull();
+    expect(preview).toHaveClass("line-clamp-4");
+    expect(within(promptCard!).getAllByRole("button", { name: "Copiar prompt Prompt visible" })).toHaveLength(2);
+  });
+
   it("places contained media before each card title and keeps Lightbox labels in sync", () => {
     render(<ToolsPage />);
 

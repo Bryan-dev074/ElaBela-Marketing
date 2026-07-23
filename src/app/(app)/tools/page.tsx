@@ -553,7 +553,7 @@ export default function ToolsPage() {
                       <span className="h-2 w-2 rounded-full bg-[#28c840]/60" />
                       <span className="ml-1.5 font-mono text-[10px] tracking-wide text-[var(--faint)]">prompt.txt</span>
                     </span>
-                    <span className="line-clamp-[7] block whitespace-pre-wrap px-3.5 py-3 font-mono text-xs leading-relaxed text-zinc-300">
+                    <span data-prompt-preview className="line-clamp-4 block whitespace-pre-wrap px-3.5 py-3 font-mono text-xs leading-relaxed text-zinc-300">
                       {item.note || "Sin texto todavía — tocá Editar y pegá el prompt."}
                     </span>
                   </button>
