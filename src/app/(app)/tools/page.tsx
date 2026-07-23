@@ -780,7 +780,7 @@ export default function ToolsPage() {
           <div className="space-y-4">
             <div className="flex gap-3">
               <div>
-                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Ícono</span>
+                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Ícono (emoji, imagen o GIF)</span>
                 <IconPicker value={editing.icon} onChange={(icon) => setEditing((c) => (c ? { ...c, icon } : c))} size={42} />
               </div>
               <div className="min-w-0 flex-1">

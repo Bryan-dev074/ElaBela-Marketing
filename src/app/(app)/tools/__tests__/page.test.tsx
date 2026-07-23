@@ -107,6 +107,20 @@ describe("ToolsPage dynamic categories", () => {
     await waitFor(() => expect(mocks.updateAsync).toHaveBeenCalledWith("app-1", expect.objectContaining({ image: "" })));
   });
 
+  it("makes custom image and GIF icon support explicit for link tools", async () => {
+    render(<ToolsPage />);
+    const appCard = screen.getByText("App visible").closest("article");
+    fireEvent.click(within(appCard!).getByRole("button", { name: "Editar recurso" }));
+    expect(screen.getByText("Ícono (emoji, imagen o GIF)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Usar ícono personalizado" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await waitFor(() => expect(mocks.updateAsync).toHaveBeenCalledWith("app-1", expect.objectContaining({
+      icon: "https://example.supabase.co/storage/v1/object/public/elabela-assets/tools/new.png",
+      image: "",
+    })));
+  });
+
   it("keeps long prompt previews compact without changing the copy action", () => {
     render(<ToolsPage />);
 
