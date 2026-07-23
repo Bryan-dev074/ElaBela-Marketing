@@ -567,14 +567,31 @@ export async function reorderToolCategories(categoryIds: string[]): Promise<Coll
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-export interface CalEventRow { id: string; date: string; kind: "tarea" | "proyecto"; title: string; owner: string }
+export interface CalEventRow { id: string; date: string; kind: "tarea" | "proyecto"; title: string; owner: string; status: TaskState }
+
+export function calendarEventFromRow(r: Record<string, unknown>): CalEventRow {
+  const status = r.status === "doing" || r.status === "done" ? r.status : "todo";
+  return {
+    id: r.id as string,
+    date: r.event_date as string,
+    kind: r.kind as "tarea" | "proyecto",
+    title: r.title as string,
+    owner: (r.owner as string) || "",
+    status,
+  };
+}
+
+export function calendarEventToRow(e: CalEventRow): Record<string, unknown> {
+  return { id: e.id, event_date: e.date, kind: e.kind, title: e.title, owner: e.owner, status: e.status };
+}
+
 export const useCalendarEvents = () =>
   useCollection<CalEventRow>({
     table: "calendar_events",
     seed: [],
     order: { col: "event_date" },
-    fromRow: (r) => ({ id: r.id as string, date: r.event_date as string, kind: r.kind as "tarea" | "proyecto", title: r.title as string, owner: (r.owner as string) || "" }),
-    toRow: (e) => ({ id: e.id, event_date: e.date, kind: e.kind, title: e.title, owner: e.owner }),
+    fromRow: calendarEventFromRow,
+    toRow: calendarEventToRow,
   });
 
 export type BrandFontFormat = "woff2" | "woff" | "ttf" | "otf";

@@ -340,6 +340,7 @@ create table if not exists public.calendar_events (
   event_date date not null,
   kind text not null check (kind in ('tarea','proyecto')),
   title text not null,
+  status text not null default 'todo' check (status in ('todo','doing','done')),
   owner text,
   created_at timestamptz not null default now()
 );

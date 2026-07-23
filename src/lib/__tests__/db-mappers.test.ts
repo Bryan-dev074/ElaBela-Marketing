@@ -1,6 +1,8 @@
 import {
   brandAssetFromRow,
   brandAssetToRow,
+  calendarEventFromRow,
+  calendarEventToRow,
   credentialCategoryFromRow,
   credentialCategoryToRow,
   credentialFromRow,
@@ -66,6 +68,21 @@ describe("project mapper", () => {
       ...project,
       responsibleUsernames: [" cielo ", "cielo", "", "  ", "elizabeth", "elizabeth"],
     })).toMatchObject({ responsible_usernames: ["cielo", "elizabeth"] });
+  });
+});
+
+describe("calendar event mapper", () => {
+  it("round-trips the task status and defaults legacy events to todo", () => {
+    const legacy = calendarEventFromRow({
+      id: "event-1", event_date: "2026-07-23", kind: "tarea", title: "Editar reel", owner: "cielo",
+    });
+    expect(legacy).toMatchObject({ id: "event-1", date: "2026-07-23", status: "todo" });
+
+    const current = calendarEventFromRow({
+      id: "event-2", event_date: "2026-07-24", kind: "tarea", title: "Publicar reel", owner: "cielo", status: "doing",
+    });
+    expect(current.status).toBe("doing");
+    expect(calendarEventToRow({ ...current, status: "done" })).toMatchObject({ status: "done" });
   });
 });
 

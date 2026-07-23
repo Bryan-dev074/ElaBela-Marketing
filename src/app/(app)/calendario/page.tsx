@@ -6,13 +6,15 @@ import {
   ChevronLeft, ChevronRight, Plus, Film, FolderKanban, CheckSquare, Sparkles,
   CalendarPlus, CalendarX2, Trash2, GripVertical,
 } from "lucide-react";
-import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, Reveal } from "@/components/ui";
+import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, StateSelector, Reveal } from "@/components/ui";
 import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, OwnerPicker } from "@/components/Avatar";
-import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Guion } from "@/lib/data";
+import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Guion, type TaskState } from "@/lib/data";
 import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
 import { calendarProjectEntries, schedulableProjectTray, upcomingFestiveDates, type CalendarProjectEntry } from "@/lib/calendar";
+import { transitionProjectStatus } from "@/lib/projects";
 import { useToday } from "@/lib/useToday";
+import { useUser } from "@/lib/user-context";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -41,18 +43,21 @@ export default function CalendarioPage() {
   const [dir, setDir] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
   const [taskOpen, setTaskOpen] = useState(false);
-  const [draft, setDraft] = useState({ title: "", owner: "cielo" });
+  const [draft, setDraft] = useState<{ title: string; owner: string; status: TaskState }>({ title: "", owner: "cielo", status: "todo" });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickId, setPickId] = useState<string | null>(null);
   const [pickOwner, setPickOwner] = useState("cielo");
+  const [pickStatus, setPickStatus] = useState<TaskState>("todo");
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [trayExpanded, setTrayExpanded] = useState(false);
+  const [calendarError, setCalendarError] = useState("");
 
-  const { items: projects, update: updateProject } = useProjects();
+  const user = useUser();
+  const { items: projects, updateAsync: updateProjectAsync } = useProjects();
   const { items: guiones } = useGuiones();
-  const { items: events, add: addEventDb, remove: removeEventDb } = useCalendarEvents();
+  const { items: events, addAsync: addEventAsync, updateAsync: updateEventAsync, remove: removeEventDb } = useCalendarEvents();
   const { items: postTypes } = usePostTypes();
 
   /** Tipo sugerido del día: el catálogo rota en orden según el DÍA DEL AÑO. */
@@ -141,20 +146,59 @@ export default function CalendarioPage() {
     setConfirmDel(null);
     setTaskOpen(false);
     setPickerOpen(false);
+    setCalendarError("");
   };
 
-  function addTask() {
+  async function addTask() {
     if (!selected || !draft.title.trim()) return;
-    addEventDb({ id: "e" + Date.now(), date: selected, kind: "tarea", title: draft.title.trim(), owner: draft.owner });
+    setCalendarError("");
+    const result = await addEventAsync({
+      id: "e" + Date.now(), date: selected, kind: "tarea", title: draft.title.trim(), owner: draft.owner, status: draft.status,
+    });
+    if (!result.ok) {
+      setCalendarError(result.error);
+      return;
+    }
     setDraft((d) => ({ ...d, title: "" }));
     setTaskOpen(false);
   }
 
-  function schedulePick() {
+  async function schedulePick() {
     if (!selected || !pickId) return;
-    updateProject(pickId, { due: selected, owner: pickOwner });
+    setCalendarError("");
+    const project = projects.find(({ id }) => id === pickId);
+    if (!project) return;
+    try {
+      const transitioned = transitionProjectStatus(project, pickStatus, user.id, new Date());
+      const result = await updateProjectAsync(pickId, { ...transitioned, due: selected, owner: pickOwner });
+      if (!result.ok) {
+        setCalendarError(result.error);
+        return;
+      }
+    } catch (error) {
+      setCalendarError(error instanceof Error ? error.message : "No se pudo agendar el proyecto.");
+      return;
+    }
     setPickerOpen(false);
     setPickId(null);
+  }
+
+  async function changeProjectStatus(projectId: string, status: TaskState) {
+    const project = projects.find(({ id }) => id === projectId);
+    if (!project) return;
+    try {
+      setCalendarError("");
+      const result = await updateProjectAsync(projectId, transitionProjectStatus(project, status, user.id, new Date()));
+      if (!result.ok) setCalendarError(result.error);
+    } catch (error) {
+      setCalendarError(error instanceof Error ? error.message : "No se pudo actualizar el proyecto.");
+    }
+  }
+
+  async function changeEventStatus(eventId: string, status: TaskState) {
+    setCalendarError("");
+    const result = await updateEventAsync(eventId, { status });
+    if (!result.ok) setCalendarError(result.error);
   }
 
   /** El drag de proyectos actualiza su fecha de entrega. */
@@ -162,8 +206,8 @@ export default function CalendarioPage() {
     e.preventDefault();
     const raw = e.dataTransfer.getData("text/plain") || dragId;
     if (raw) {
-      if (raw.startsWith("p:")) updateProject(raw.slice(2), { due: date });
-      else updateProject(raw, { due: date });
+      if (raw.startsWith("p:")) void updateProjectAsync(raw.slice(2), { due: date });
+      else void updateProjectAsync(raw, { due: date });
     }
     setDragOver(null);
     setDragId(null);
@@ -176,6 +220,7 @@ export default function CalendarioPage() {
         title="Calendario"
         description="Tocá un día para ver su agenda, arrastrá un proyecto hasta una celda para fijar su entrega y seguí la rotación de contenido sugerida."
       />
+      {calendarError && <p role="alert" className="mb-6 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{calendarError}</p>}
 
       {/* ============ Semana ampliada ============ */}
       <section aria-labelledby="calendar-week-title" className="mb-8">
@@ -221,6 +266,7 @@ export default function CalendarioPage() {
                       <p key={p.id} className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] ${kind === "completed" ? "bg-emerald-500/15 text-emerald-200" : "bg-blue-500/15 text-blue-200"}`}>
                         <span className={`h-1 w-1 shrink-0 rounded-full ${kind === "completed" ? "bg-emerald-400" : "bg-blue-400"}`} />
                         <span className="truncate">{kind === "completed" ? "✓ " : ""}{p.name}</span>
+                        <StatePill state={kind === "completed" ? "done" : p.status} />
                         <span className="ml-auto shrink-0"><Avatar username={p.owner} size={16} /></span>
                       </p>
                     ))}
@@ -235,6 +281,7 @@ export default function CalendarioPage() {
                       <p key={e.id} className="flex items-center gap-1.5 rounded-lg bg-nude/15 px-2 py-1.5 text-[11px] text-nude">
                         <span className="h-1 w-1 shrink-0 rounded-full bg-nude" />
                         <span className="truncate">{e.title}</span>
+                        <StatePill state={e.status} />
                         <span className="ml-auto shrink-0"><Avatar username={e.owner} size={16} /></span>
                       </p>
                     ))}
@@ -525,10 +572,10 @@ export default function CalendarioPage() {
         title={selected ? cap(dayLabel(selected)) : ""}
         footer={
           <div className="flex w-full flex-wrap justify-end gap-2">
-            <Button variant="subtle" onClick={() => { setDraft((d) => ({ ...d, title: "" })); setTaskOpen(true); }}>
+            <Button variant="subtle" onClick={() => { setDraft((d) => ({ ...d, title: "", status: "todo" })); setTaskOpen(true); }}>
               <CheckSquare className="h-4 w-4" /> Nueva tarea
             </Button>
-            <Button onClick={() => { setPickId(null); setPickerOpen(true); }}>
+            <Button onClick={() => { setPickId(null); setPickStatus("todo"); setPickerOpen(true); }}>
               <CalendarPlus className="h-4 w-4" /> Agendar proyecto
             </Button>
           </div>
@@ -574,10 +621,10 @@ export default function CalendarioPage() {
                       <div key={p.id} className="flex items-center gap-2.5 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2">
                         <FolderKanban className="h-4 w-4 shrink-0 text-blue-300" />
                         <p className="min-w-0 flex-1 truncate text-sm text-white">{p.name}</p>
-                        <StatePill state={p.status} />
+                        <StateSelector value={p.status} size="sm" onChange={(status) => void changeProjectStatus(p.id, status)} />
                         <Avatar username={p.owner} size={22} />
                         <button
-                          onClick={() => updateProject(p.id, { due: undefined })}
+                          onClick={() => void updateProjectAsync(p.id, { due: undefined })}
                           aria-label={`Desagendar ${p.name}`}
                           {...cursorIntentProps("warning", "Desagendar")}
                           className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--faint)] transition hover:bg-white/10 hover:text-amber-300"
@@ -599,7 +646,7 @@ export default function CalendarioPage() {
                       <div key={p.id} className="flex items-center gap-2.5 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300">✓</span>
                         <p className="min-w-0 flex-1 truncate text-sm text-white">{p.name}</p>
-                        <StatePill state="done" />
+                        <StateSelector value="done" size="sm" onChange={(status) => void changeProjectStatus(p.id, status)} />
                         <Avatar username={p.owner} size={22} />
                       </div>
                     ))}
@@ -635,6 +682,7 @@ export default function CalendarioPage() {
                             ? <CheckSquare className="h-4 w-4 shrink-0 text-nude" />
                             : <FolderKanban className="h-4 w-4 shrink-0 text-nude" />}
                           <p className="min-w-0 flex-1 truncate text-sm text-white">{e.title}</p>
+                          <StateSelector value={e.status} size="sm" onChange={(status) => void changeEventStatus(e.id, status)} />
                           <Avatar username={e.owner} size={22} />
                           <button
                             onClick={() => {
@@ -699,6 +747,10 @@ export default function CalendarioPage() {
             <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsable</span>
             <OwnerPicker value={draft.owner} onChange={(o) => setDraft((d) => ({ ...d, owner: o }))} />
           </div>
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span>
+            <StateSelector value={draft.status} onChange={(status) => setDraft((d) => ({ ...d, status }))} />
+          </div>
         </div>
       </Modal>
 
@@ -732,7 +784,7 @@ export default function CalendarioPage() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => { setPickId(p.id); setPickOwner(p.owner); }}
+                     onClick={() => { setPickId(p.id); setPickOwner(p.owner); setPickStatus(p.status); }}
                     {...cursorIntentProps("open", "Elegir")}
                     className={`press flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
                       on
@@ -753,9 +805,15 @@ export default function CalendarioPage() {
               })}
             </div>
             {pickId && (
-              <div>
-                <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsable</span>
-                <OwnerPicker value={pickOwner} onChange={setPickOwner} />
+              <div className="space-y-4">
+                <div>
+                  <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Responsable</span>
+                  <OwnerPicker value={pickOwner} onChange={setPickOwner} />
+                </div>
+                <div>
+                  <span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">Estado</span>
+                  <StateSelector value={pickStatus} onChange={setPickStatus} />
+                </div>
               </div>
             )}
           </div>
