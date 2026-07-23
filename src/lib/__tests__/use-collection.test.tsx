@@ -38,6 +38,28 @@ describe("useCollection async mutations", () => {
     });
   });
 
+  it("does not render local seed data while the live collection is still loading", async () => {
+    const pending = deferred<{ data: Row[]; error: null }>();
+    mocks.select.mockReturnValue(pending.promise);
+
+    const { result } = renderHook(() => useCollection<Row>({
+      table: "rows",
+      seed: [{ id: "seed", name: "Contenido anterior" }],
+      fromRow: (row) => row as unknown as Row,
+      toRow: (row) => row,
+    }));
+
+    expect(result.current.items).toEqual([]);
+
+    await act(async () => {
+      pending.resolve({ data: [{ id: "live", name: "Contenido actual" }], error: null });
+      await pending.promise;
+    });
+
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.items).toEqual([{ id: "live", name: "Contenido actual" }]);
+  });
+
   it("retains a later successful add when an earlier overlapping add fails", async () => {
     const first = deferred<{ error: { message: string } }>();
     const second = deferred<{ error: null }>();

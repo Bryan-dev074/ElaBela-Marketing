@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/brand";
 
@@ -44,7 +44,7 @@ const Ctx = createContext<ProfilesCtx>({
 const supabase = createClient();
 
 export function ProfilesProvider({ children }: { children: React.ReactNode }) {
-  const [profiles, setProfiles] = useState<TeamProfile[]>(FALLBACK);
+  const [profiles, setProfiles] = useState<TeamProfile[]>([]);
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(() => {
@@ -62,6 +62,10 @@ export function ProfilesProvider({ children }: { children: React.ReactNode }) {
               avatar: (r.avatar as string) || undefined,
             })),
           );
+        } else {
+          // Keep the offline fallback, but only reveal it after the live query
+          // settles so navigation never flashes stale profile data first.
+          setProfiles((current) => current.length ? current : FALLBACK);
         }
         setReady(true);
       });

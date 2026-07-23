@@ -85,11 +85,13 @@ export function useCollection<T extends object>(cfg: {
 }) {
   const idKey = cfg.idKey ?? "id";
   const idOf = (i: T) => (i as Record<string, unknown>)[idKey];
-  const [items, setItems] = useState<T[]>(cfg.seed);
+  // Start empty until the live query resolves. Rendering the local seed here
+  // makes every route briefly show stale demo data before Supabase replaces it.
+  const [items, setItems] = useState<T[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const live = useRef(true);
-  const itemsRef = useRef<T[]>(cfg.seed);
+  const itemsRef = useRef<T[]>([]);
   const mutationVersions = useRef(new Map<unknown, number>());
 
   const setCurrentItems = (next: T[] | ((current: T[]) => T[])) => {
@@ -118,10 +120,16 @@ export function useCollection<T extends object>(cfg: {
       if (!live.current) return;
       if (!error && data && data.length) {
         setCurrentItems(data.map(cfg.fromRow));
-      } else if (!error && data && cfg.seed.length) {
-        // Table reachable but empty: bootstrap it with the seed so that later
-        // update/remove calls hit real rows and survive a reload.
-        supabase.from(cfg.table).upsert(cfg.seed.map(cfg.toRow), { ignoreDuplicates: true }).then(() => {});
+      } else {
+        // Keep the offline/empty-table fallback, but only expose it after the
+        // live request has completed. Never replace a mutation made while the
+        // request was in flight with the fallback seed.
+        if (itemsRef.current.length === 0) setCurrentItems(cfg.seed);
+        if (!error && data && cfg.seed.length) {
+          // Table reachable but empty: bootstrap it with the seed so that later
+          // update/remove calls hit real rows and survive a reload.
+          supabase.from(cfg.table).upsert(cfg.seed.map(cfg.toRow), { ignoreDuplicates: true }).then(() => {});
+        }
       }
       setReady(true);
     })();
