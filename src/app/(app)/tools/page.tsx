@@ -165,16 +165,25 @@ function LinkVisual({ item, accent }: { item: ToolItem; accent: string }) {
 function ToolMedia({ item, onView }: { item: ToolItem; onView: () => void }) {
   if (!item.image) return null;
   return (
-    <button
-      type="button"
-      onClick={onView}
-      aria-label={`Ver imagen de ${item.title}`}
-      {...cursorIntentProps("open", "Ver en grande")}
-      className="press pointer-events-auto relative z-[2] mt-3 block aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black/30"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={item.image} alt="" className="h-full w-full object-contain p-1 transition duration-300 hover:brightness-110" />
-    </button>
+    <div data-tool-media-frame className="relative z-[1] mt-3 aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-[#171319]">
+      <div
+        data-tool-media-backdrop
+        aria-hidden
+        className="absolute inset-0 scale-110 bg-cover bg-center opacity-45 blur-2xl"
+        style={{ backgroundImage: `url("${item.image.replace(/"/g, "%22")}")` }}
+      />
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-white/[0.08] via-[#171319]/35 to-[#0b090c]/70" />
+      <button
+        type="button"
+        onClick={onView}
+        aria-label={`Ver imagen de ${item.title}`}
+        {...cursorIntentProps("open", "Ver en grande")}
+        className="press pointer-events-auto absolute inset-0 z-[1] overflow-hidden"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={item.image} alt="" className="h-full w-full object-contain p-2 transition duration-300 hover:brightness-110" />
+      </button>
+    </div>
   );
 }
 
@@ -545,7 +554,7 @@ export default function ToolsPage() {
                     onClick={() => copy(text, item.id)}
                     {...cursorIntentProps("copy")}
                     aria-label={`Copiar prompt ${item.title}`}
-                    className="relative z-[1] mt-3 flex-1 overflow-hidden rounded-xl border border-white/[0.08] bg-black/40 text-left transition hover:border-nude/30"
+                    className="relative z-[1] mt-3 h-[9.5rem] min-h-[9.5rem] overflow-hidden rounded-xl border border-white/[0.08] bg-black/40 text-left transition hover:border-nude/30"
                   >
                     <span className="flex items-center gap-1.5 border-b border-white/[0.06] bg-white/[0.03] px-3.5 py-2">
                       <span className="h-2 w-2 rounded-full bg-[#ff5f57]/60" />
@@ -559,21 +568,23 @@ export default function ToolsPage() {
                   </button>
 
                   {/* Pasos para aplicar el prompt */}
-                  {steps.length > 0 && (
-                    <div className="relative z-[1] mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
+                  <div data-prompt-steps className="relative z-[1] mt-3 min-h-[7rem] rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
                       <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-nude">Cómo usarlo</p>
-                      <ol className="space-y-1.5">
-                        {steps.map((s, n) => (
-                          <li key={n} className="flex items-start gap-2 text-xs leading-relaxed text-[var(--muted)]">
-                            <span className="num mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-nude/30 bg-nude/10 text-[10px] font-semibold text-nude">
-                              {n + 1}
-                            </span>
-                            <span className="min-w-0">{s}</span>
-                          </li>
-                        ))}
-                      </ol>
+                      {steps.length > 0 ? (
+                        <ol className="space-y-1.5">
+                          {steps.map((s, n) => (
+                            <li key={n} className="flex items-start gap-2 text-xs leading-relaxed text-[var(--muted)]">
+                              <span className="num mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-nude/30 bg-nude/10 text-[10px] font-semibold text-nude">
+                                {n + 1}
+                              </span>
+                              <span className="line-clamp-2 min-w-0">{s}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="text-xs leading-relaxed text-[var(--muted)]">Copiá el prompt, completá los datos entre corchetes y adaptalo a tu producto.</p>
+                      )}
                     </div>
-                  )}
 
                   {/* Botón grande de copiar con feedback animado */}
                   <motion.button

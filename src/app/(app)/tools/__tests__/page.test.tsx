@@ -114,6 +114,8 @@ describe("ToolsPage dynamic categories", () => {
     const title = within(promptCard!).getByText("Prompt visible");
     expect(media.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(media.querySelector("img")).toHaveClass("object-contain");
+    expect(promptCard!.querySelector("[data-tool-media-backdrop]")).not.toBeNull();
+    expect(promptCard!.querySelector("[data-prompt-steps]")).toHaveClass("min-h-[7rem]");
 
     fireEvent.click(media);
     expect(screen.getByRole("dialog", { name: "Prompt visible" })).toBeInTheDocument();
