@@ -129,7 +129,10 @@ describe("CredencialesView categories and preserved actions", () => {
     const row = screen.getByText("Google").closest("[data-credential-row]") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: "Mostrar valores" }));
     expect(within(row).getByText("clave-google")).toBeInTheDocument();
-    fireEvent.click(within(row).getByRole("button", { name: "Copiar contraseña" }));
+    const passwordCopy = within(row).getByRole("button", { name: "Copiar contraseña" });
+    expect(passwordCopy).toHaveAttribute("title", "Copiar contraseña");
+    expect(passwordCopy).toHaveTextContent("Contraseña");
+    fireEvent.click(passwordCopy);
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("clave-google"));
 
     fireEvent.click(within(row).getByRole("button", { name: "Eliminar acceso" }));
@@ -143,7 +146,10 @@ describe("CredencialesView categories and preserved actions", () => {
     render(<CredencialesView role="marketer" ownerId="user-1" />);
     const row = screen.getByText("Google").closest("[data-credential-row]") as HTMLElement;
 
-    fireEvent.click(within(row).getByRole("button", { name: "Copiar correo" }));
+    const emailCopy = within(row).getByRole("button", { name: "Copiar correo" });
+    expect(emailCopy).toHaveAttribute("title", "Copiar correo");
+    expect(emailCopy).toHaveTextContent("Correo");
+    fireEvent.click(emailCopy);
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith("team@example.com"));
 
     const link = within(row).getByRole("link", { name: "Abrir enlace de Google" });

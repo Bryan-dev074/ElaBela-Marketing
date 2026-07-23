@@ -105,6 +105,7 @@ function Row({
 
   const configured = credential.identifier || credential.secret;
   const safeUrl = getSafeCredentialUrl(credential.url);
+  const identifierLabel = credential.idType === "email" ? "Correo" : "Usuario";
   const copy = async (value: string, key: string) => {
     if (!value || !navigator.clipboard) return;
     try {
@@ -132,6 +133,7 @@ function Row({
   };
 
   const iconButton = "press flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-[var(--faint)] transition hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-35";
+  const copyFieldButton = "press flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg border border-white/10 px-2 text-[var(--faint)] transition hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-35";
 
   return (
     <div data-credential-row className="card-sheen group flex items-center gap-3 rounded-xl border border-white/8 bg-black/20 px-4 py-3 transition-colors duration-200 hover:border-nude/20 hover:bg-black/30">
@@ -157,11 +159,13 @@ function Row({
             <button type="button" onClick={() => setShow((current) => !current)} className={iconButton} aria-label={show ? "Ocultar valores" : "Mostrar valores"} {...cursorIntentProps("open", show ? "Ocultar" : "Mostrar")}>
               {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
-            <button type="button" onClick={() => void copy(credential.identifier, `id-${credential.id}`)} disabled={!credential.identifier} className={iconButton} aria-label={`Copiar ${credential.idType === "email" ? "correo" : "usuario"}`} {...cursorIntentProps("copy")}>
+            <button type="button" onClick={() => void copy(credential.identifier, `id-${credential.id}`)} disabled={!credential.identifier} className={copyFieldButton} aria-label={`Copiar ${identifierLabel.toLowerCase()}`} title={`Copiar ${identifierLabel.toLowerCase()}`} {...cursorIntentProps("copy")}>
               <CopyIcon done={copied === `id-${credential.id}`} />
+              <span className="hidden text-[10px] font-medium sm:inline">{identifierLabel}</span>
             </button>
-            <button type="button" onClick={() => void copy(credential.secret, `sec-${credential.id}`)} className={iconButton} aria-label="Copiar contraseña" {...cursorIntentProps("copy")}>
+            <button type="button" onClick={() => void copy(credential.secret, `sec-${credential.id}`)} className={copyFieldButton} aria-label="Copiar contraseña" title="Copiar contraseña" {...cursorIntentProps("copy")}>
               <CopyIcon done={copied === `sec-${credential.id}`} />
+              <span className="hidden text-[10px] font-medium sm:inline">Contraseña</span>
             </button>
           </>
         ) : null}
