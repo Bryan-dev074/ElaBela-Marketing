@@ -90,15 +90,29 @@ describe("ProjectProgress", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
-  it("describes a steps project with no steps without implying progress", () => {
-    render(<ProjectProgress project={project({ steps: [] })} />);
+  it("sets steps projects without steps in course to 50%", () => {
+    render(<ProjectProgress project={project({ status: "doing", steps: [] })} />);
+
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+  });
+
+  it("marks steps projects without steps as complete when done", () => {
+    render(<ProjectProgress project={project({ status: "done", steps: [] })} />);
+
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("keeps the zero-step label visible in the todo state", () => {
+    render(<ProjectProgress project={project({ status: "todo", steps: [] })} />);
 
     expect(screen.getByText("Sin pasos")).toBeInTheDocument();
-    expect(screen.queryByText(/0\s?%/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
   });
 
-  it("keeps the zero-step label visible inside the compact ring", () => {
+  it("keeps the zero-step label visible inside the compact ring for pending projects", () => {
     render(<ProjectProgress project={project({ steps: [] })} compact />);
 
     expect(screen.getByText("Sin pasos")).toBeVisible();

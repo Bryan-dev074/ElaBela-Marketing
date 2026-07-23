@@ -9,6 +9,7 @@ const motionState = vi.hoisted(() => ({
   reduced: false,
   transitions: [] as Array<Record<string, unknown> | undefined>,
   animations: [] as Array<Record<string, unknown> | undefined>,
+  initials: [] as unknown[],
 }));
 
 const projectMetaState = vi.hoisted(() => ({
@@ -34,9 +35,10 @@ vi.mock("framer-motion", async () => {
     whileHover?: unknown;
     whileTap?: unknown;
     transition?: Record<string, unknown>;
-  }>(function MotionElement({ animate, initial: _initial, whileHover: _whileHover, whileTap: _whileTap, transition, ...props }, ref) {
+  }>(function MotionElement({ animate, initial, whileHover: _whileHover, whileTap: _whileTap, transition, ...props }, ref) {
     motionState.transitions.push(transition);
     motionState.animations.push(animate as Record<string, unknown> | undefined);
+    motionState.initials.push(initial);
     return React.createElement(tag, { ...props, ref });
   });
   return {
@@ -48,9 +50,10 @@ vi.mock("framer-motion", async () => {
         animate?: unknown;
         initial?: unknown;
         transition?: Record<string, unknown>;
-      }>(function MotionCircle({ animate, initial: _initial, transition, ...props }, ref) {
+      }>(function MotionCircle({ animate, initial, transition, ...props }, ref) {
         motionState.transitions.push(transition);
         motionState.animations.push(animate as Record<string, unknown> | undefined);
+        motionState.initials.push(initial);
         return <circle ref={ref} {...props} />;
       }),
     },
@@ -121,6 +124,7 @@ describe("ProjectCard", () => {
     motionState.reduced = false;
     motionState.transitions.length = 0;
     motionState.animations.length = 0;
+    motionState.initials.length = 0;
     projectMetaState.previewCalls.length = 0;
   });
 
@@ -353,6 +357,7 @@ describe("ProjectCard", () => {
       opacity: [0.12, 0.26, 0.12],
       scale: [0.96, 1.04, 0.96],
     });
+    expect(motionState.initials[animationIndex]).toEqual({ opacity: 0.12, scale: 0.96 });
     expect(motionState.transitions[animationIndex]).toEqual({
       duration: 3.2,
       ease: "easeInOut",

@@ -112,7 +112,7 @@ export function ProjectCard({
         <motion.span
           data-project-doing-glow="true"
           aria-hidden="true"
-          initial={false}
+          initial={reducedMotion ? false : { opacity: 0.12, scale: 0.96 }}
           animate={reducedMotion
             ? { opacity: 0.18, scale: 1 }
             : { opacity: [0.12, 0.26, 0.12], scale: [0.96, 1.04, 0.96] }}

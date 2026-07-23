@@ -25,6 +25,16 @@ export function getProjectProgress(project: Project): {
 
   const total = project.steps.length;
   const completed = project.steps.filter(({ done }) => done).length;
+  if (total === 0) {
+    if (project.status === "doing") {
+      return { completed: 0, total: 0, percentage: 50, determinate: true };
+    }
+    if (project.status === "done") {
+      return { completed: 0, total: 0, percentage: 100, determinate: true };
+    }
+    return { completed: 0, total: 0, percentage: 0, determinate: true };
+  }
+
   return {
     completed,
     total,
@@ -61,14 +71,18 @@ export function ProjectProgress({ project, size = 68, compact = false }: {
   }
 
   const { completed, total, percentage } = progress;
-  const complete = percentage === 100 && total > 0;
+  const complete = project.status === "done" || (percentage === 100 && total > 0);
   const stroke = Math.max(3.5, Math.min(5, size * 0.065));
   const radius = (size - stroke * 2) / 2;
   const circumference = 2 * Math.PI * radius;
   const opacity = 0.55 + percentage * 0.0045;
   const haloOpacity = 0.12 + percentage * 0.0025;
   const visibleText = total === 0
-    ? "Sin pasos"
+    ? project.status === "done"
+      ? "100%"
+      : project.status === "doing"
+        ? "50%"
+        : "Sin pasos"
     : compact
       ? `${percentage}%`
       : `${completed} de ${total} · ${percentage} %`;
@@ -80,7 +94,13 @@ export function ProjectProgress({ project, size = 68, compact = false }: {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percentage}
-      aria-valuetext={total === 0 ? "Sin pasos" : `${completed} de ${total}, ${percentage} por ciento`}
+      aria-valuetext={total === 0
+        ? project.status === "done"
+          ? "100 por ciento"
+          : project.status === "doing"
+            ? "50 por ciento"
+            : "Sin pasos"
+        : `${completed} de ${total}, ${percentage} por ciento`}
       className={`flex items-center ${compact ? "gap-0" : "gap-3"}`}
     >
       <span className="relative shrink-0" style={{ width: size, height: size }}>
