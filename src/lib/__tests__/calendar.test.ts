@@ -12,6 +12,7 @@ const project = (patch: Partial<Project> = {}): Project => ({
 describe("calendar domain helpers", () => {
   it("marks a manually added calendar task as completed when it is listo", () => {
     expect(calendarTaskStateTone("done")).toBe("completed");
+    expect(calendarTaskStateTone("doing")).toBe("in-progress");
     expect(calendarTaskStateTone("todo")).toBe("pending");
   });
 

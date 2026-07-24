@@ -737,20 +737,25 @@ export default function CalendarioPage() {
                   <div className="space-y-1.5">
                     {a.events.map((e) => {
                       const armed = confirmDel === e.id;
-                      const completed = calendarTaskStateTone(e.status) === "completed";
+                      const tone = calendarTaskStateTone(e.status);
+                      const completed = tone === "completed";
+                      const inProgress = tone === "in-progress";
                       return (
                         <div
                           key={e.id}
+                          data-calendar-task-tone={tone}
                           className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors ${
                             completed
                               ? "border-emerald-400/35 bg-emerald-500/[0.14] shadow-[inset_0_1px_0_rgba(110,231,183,0.08)]"
-                              : "border-nude/25 bg-nude/10"
+                              : inProgress
+                                ? "state-doing border-blue-400/45 bg-blue-500/[0.14] shadow-[0_0_26px_-14px_rgba(59,130,246,0.95)]"
+                                : "border-nude/25 bg-nude/10"
                           }`}
                         >
                           {e.kind === "tarea"
-                            ? <CheckSquare className={`h-4 w-4 shrink-0 ${completed ? "text-emerald-300" : "text-nude"}`} />
-                            : <FolderKanban className={`h-4 w-4 shrink-0 ${completed ? "text-emerald-300" : "text-nude"}`} />}
-                          <p className={`min-w-0 flex-1 truncate text-sm ${completed ? "font-medium text-emerald-50" : "text-white"}`}>{e.title}</p>
+                            ? <CheckSquare className={`h-4 w-4 shrink-0 ${completed ? "text-emerald-300" : inProgress ? "text-blue-300" : "text-nude"}`} />
+                            : <FolderKanban className={`h-4 w-4 shrink-0 ${completed ? "text-emerald-300" : inProgress ? "text-blue-300" : "text-nude"}`} />}
+                          <p className={`min-w-0 flex-1 truncate text-sm ${completed ? "font-medium text-emerald-50" : inProgress ? "font-medium text-blue-50" : "text-white"}`}>{e.title}</p>
                           <StateSelector value={e.status} size="sm" onChange={(status) => void changeEventStatus(e.id, status)} />
                           <Avatar username={e.owner} size={22} />
                           <button
@@ -764,7 +769,9 @@ export default function CalendarioPage() {
                               armed
                                 ? "border border-red-400/40 bg-red-500/20 px-2.5 text-red-300"
                                 : completed
-                                  ? "w-9 text-emerald-200/70 hover:bg-emerald-500/15 hover:text-emerald-100"
+                                ? "w-9 text-emerald-200/70 hover:bg-emerald-500/15 hover:text-emerald-100"
+                                  : inProgress
+                                    ? "w-9 text-blue-200/70 hover:bg-blue-500/15 hover:text-blue-100"
                                   : "w-9 text-[var(--faint)] hover:bg-red-500/15 hover:text-red-300"
                             }`}
                           >

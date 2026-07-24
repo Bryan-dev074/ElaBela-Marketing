@@ -18,8 +18,10 @@ export type CalendarWeekSummary = {
 };
 
 /** Visual state used by manually added tasks inside the day agenda. */
-export function calendarTaskStateTone(status: TaskState): "completed" | "pending" {
-  return status === "done" ? "completed" : "pending";
+export function calendarTaskStateTone(status: TaskState): "completed" | "in-progress" | "pending" {
+  if (status === "done") return "completed";
+  if (status === "doing") return "in-progress";
+  return "pending";
 }
 
 /** Small, presentation-friendly totals for the weekly agenda header. */
