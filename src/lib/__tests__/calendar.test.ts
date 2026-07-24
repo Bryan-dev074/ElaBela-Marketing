@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project, SpecialDate } from "@/lib/data";
-import { calendarProjectEntries, calendarWeekSummary, schedulableProjectTray, upcomingFestiveDates } from "@/lib/calendar";
+import { calendarProjectEntries, calendarTaskStateTone, calendarWeekSummary, schedulableProjectTray, upcomingFestiveDates } from "@/lib/calendar";
 
 const project = (patch: Partial<Project> = {}): Project => ({
   id: "p1", name: "Campaña Glow", owner: "bryan",
@@ -10,6 +10,11 @@ const project = (patch: Partial<Project> = {}): Project => ({
 });
 
 describe("calendar domain helpers", () => {
+  it("marks a manually added calendar task as completed when it is listo", () => {
+    expect(calendarTaskStateTone("done")).toBe("completed");
+    expect(calendarTaskStateTone("todo")).toBe("pending");
+  });
+
   it("summarizes a week for the agenda header without counting empty days", () => {
     const summary = calendarWeekSummary(
       ["2026-07-20", "2026-07-21", "2026-07-22"],

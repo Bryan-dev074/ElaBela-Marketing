@@ -11,7 +11,7 @@ import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, OwnerPicker } from "@/components/Avatar";
 import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Guion, type TaskState } from "@/lib/data";
 import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
-import { calendarProjectEntries, calendarWeekSummary, schedulableProjectTray, upcomingFestiveDates, type CalendarProjectEntry } from "@/lib/calendar";
+import { calendarProjectEntries, calendarTaskStateTone, calendarWeekSummary, schedulableProjectTray, upcomingFestiveDates, type CalendarProjectEntry } from "@/lib/calendar";
 import { transitionProjectStatus } from "@/lib/projects";
 import { useToday } from "@/lib/useToday";
 import { useUser } from "@/lib/user-context";
@@ -737,12 +737,20 @@ export default function CalendarioPage() {
                   <div className="space-y-1.5">
                     {a.events.map((e) => {
                       const armed = confirmDel === e.id;
+                      const completed = calendarTaskStateTone(e.status) === "completed";
                       return (
-                        <div key={e.id} className="flex items-center gap-2.5 rounded-xl border border-nude/25 bg-nude/10 px-3 py-2">
+                        <div
+                          key={e.id}
+                          className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors ${
+                            completed
+                              ? "border-emerald-400/35 bg-emerald-500/[0.14] shadow-[inset_0_1px_0_rgba(110,231,183,0.08)]"
+                              : "border-nude/25 bg-nude/10"
+                          }`}
+                        >
                           {e.kind === "tarea"
-                            ? <CheckSquare className="h-4 w-4 shrink-0 text-nude" />
-                            : <FolderKanban className="h-4 w-4 shrink-0 text-nude" />}
-                          <p className="min-w-0 flex-1 truncate text-sm text-white">{e.title}</p>
+                            ? <CheckSquare className={`h-4 w-4 shrink-0 ${completed ? "text-emerald-300" : "text-nude"}`} />
+                            : <FolderKanban className={`h-4 w-4 shrink-0 ${completed ? "text-emerald-300" : "text-nude"}`} />}
+                          <p className={`min-w-0 flex-1 truncate text-sm ${completed ? "font-medium text-emerald-50" : "text-white"}`}>{e.title}</p>
                           <StateSelector value={e.status} size="sm" onChange={(status) => void changeEventStatus(e.id, status)} />
                           <Avatar username={e.owner} size={22} />
                           <button
@@ -755,7 +763,9 @@ export default function CalendarioPage() {
                             className={`press flex h-9 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition ${
                               armed
                                 ? "border border-red-400/40 bg-red-500/20 px-2.5 text-red-300"
-                                : "w-9 text-[var(--faint)] hover:bg-red-500/15 hover:text-red-300"
+                                : completed
+                                  ? "w-9 text-emerald-200/70 hover:bg-emerald-500/15 hover:text-emerald-100"
+                                  : "w-9 text-[var(--faint)] hover:bg-red-500/15 hover:text-red-300"
                             }`}
                           >
                             {armed ? "¿Seguro?" : <Trash2 className="h-4 w-4" />}

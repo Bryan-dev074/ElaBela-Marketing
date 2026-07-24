@@ -1,4 +1,4 @@
-import type { Project, SpecialDate } from "@/lib/data";
+import type { Project, SpecialDate, TaskState } from "@/lib/data";
 import { isProjectSchedulable, projectCalendarOccurrence, type ProjectCalendarOccurrence } from "@/lib/projects";
 
 export type CalendarProjectEntry = ProjectCalendarOccurrence & { project: Project };
@@ -16,6 +16,11 @@ export type CalendarWeekSummary = {
   active: number;
   completed: number;
 };
+
+/** Visual state used by manually added tasks inside the day agenda. */
+export function calendarTaskStateTone(status: TaskState): "completed" | "pending" {
+  return status === "done" ? "completed" : "pending";
+}
 
 /** Small, presentation-friendly totals for the weekly agenda header. */
 export function calendarWeekSummary(
