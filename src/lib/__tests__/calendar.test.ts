@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Project, SpecialDate } from "@/lib/data";
-import { calendarProjectEntries, schedulableProjectTray, upcomingFestiveDates } from "@/lib/calendar";
+import { calendarProjectEntries, calendarWeekSummary, schedulableProjectTray, upcomingFestiveDates } from "@/lib/calendar";
 
 const project = (patch: Partial<Project> = {}): Project => ({
   id: "p1", name: "Campaña Glow", owner: "bryan",
@@ -10,6 +10,19 @@ const project = (patch: Partial<Project> = {}): Project => ({
 });
 
 describe("calendar domain helpers", () => {
+  it("summarizes a week for the agenda header without counting empty days", () => {
+    const summary = calendarWeekSummary(
+      ["2026-07-20", "2026-07-21", "2026-07-22"],
+      new Map([
+        ["2026-07-20", { projects: [{ kind: "due" as const }], events: [{ status: "todo" as const }] }],
+        ["2026-07-21", { projects: [{ kind: "completed" as const }], events: [{ status: "done" as const }] }],
+        ["2026-07-22", { special: [{ label: "Feriado" }] }],
+      ]),
+    );
+
+    expect(summary).toEqual({ daysWithAgenda: 3, scheduled: 5, active: 2, completed: 2 });
+  });
+
   it("uses the completion day for finished projects and never duplicates their due date", () => {
     const entries = calendarProjectEntries([
       project({ id: "done", status: "done", due: "2026-08-15", completedAt: "2026-08-01T02:30:00.000Z" }),

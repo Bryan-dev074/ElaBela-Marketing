@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft, ChevronRight, Plus, Film, FolderKanban, CheckSquare, Sparkles,
-  CalendarPlus, CalendarX2, Trash2, GripVertical,
+  CalendarPlus, CalendarX2, Trash2, GripVertical, CalendarDays, CheckCircle2,
 } from "lucide-react";
 import { PageHeader, Card, Modal, Field, Input, Button, EmptyState, StatePill, StateSelector, Reveal } from "@/components/ui";
 import { cursorIntentProps } from "@/lib/cursor-intent";
 import { Avatar, OwnerPicker } from "@/components/Avatar";
 import { SPECIAL_DATES, dayOfYear, fmtShortDate, type SpecialDate, type Guion, type TaskState } from "@/lib/data";
 import { useProjects, useGuiones, useCalendarEvents, usePostTypes, type CalEventRow } from "@/lib/db";
-import { calendarProjectEntries, schedulableProjectTray, upcomingFestiveDates, type CalendarProjectEntry } from "@/lib/calendar";
+import { calendarProjectEntries, calendarWeekSummary, schedulableProjectTray, upcomingFestiveDates, type CalendarProjectEntry } from "@/lib/calendar";
 import { transitionProjectStatus } from "@/lib/projects";
 import { useToday } from "@/lib/useToday";
 import { useUser } from "@/lib/user-context";
@@ -115,6 +115,8 @@ export default function CalendarioPage() {
       return iso(d.getFullYear(), d.getMonth(), d.getDate());
     });
   }, [selected]);
+
+  const weekSummary = useMemo(() => calendarWeekSummary(weekDays, agendaByDate), [weekDays, agendaByDate]);
 
   /** Semana ACTUAL (siempre la de hoy) para el panel de rotación. */
   const rotationWeek = useMemo(() => {
@@ -223,71 +225,130 @@ export default function CalendarioPage() {
       {calendarError && <p role="alert" className="mb-6 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{calendarError}</p>}
 
       {/* ============ Semana ampliada ============ */}
-      <section aria-labelledby="calendar-week-title" className="mb-8">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <p className="eyebrow mb-1">Primero, tu semana</p>
-            <h2 id="calendar-week-title" className="text-xl font-semibold text-white">Semana ampliada</h2>
+      <section
+        aria-labelledby="calendar-week-title"
+        data-calendar-week-shell
+        className="relative mb-8 overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#111014] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.24)] sm:p-6"
+      >
+        <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-32 h-72 w-72 rounded-full bg-nude/10 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-36 left-1/3 h-64 w-64 rounded-full bg-blue-500/[0.06] blur-3xl" />
+
+        <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-nude/25 bg-nude/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-nude">
+                <CalendarDays className="h-3 w-3" /> Tu semana
+              </span>
+              <span className="num rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] text-[var(--faint)]">
+                {fmtShortDate(weekDays[0])} — {fmtShortDate(weekDays[6])}
+              </span>
+            </div>
+            <h2 id="calendar-week-title" className="font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              Tu semana, de un vistazo
+            </h2>
+            <p className="mt-1 max-w-xl text-xs leading-relaxed text-[var(--muted)]">
+              Abrí cualquier día para ver su agenda. Los proyectos terminados quedan señalados con verde y las entregas pendientes con azul.
+            </p>
           </div>
-          <p className="num text-xs text-[var(--faint)]">{fmtShortDate(weekDays[0])} — {fmtShortDate(weekDays[6])}</p>
+
+          <div className="grid grid-cols-3 gap-2 sm:min-w-[24rem]" data-calendar-week-stats>
+            {[
+              { label: "Días activos", value: weekSummary.daysWithAgenda, icon: CalendarDays, tone: "text-nude" },
+              { label: "Pendientes", value: weekSummary.active, icon: CheckSquare, tone: "text-blue-300" },
+              { label: "Completados", value: weekSummary.completed, icon: CheckCircle2, tone: "text-emerald-300" },
+            ].map(({ label, value, icon: Icon, tone }) => (
+              <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5 backdrop-blur-sm">
+                <div className={`mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider ${tone}`}>
+                  <Icon className="h-3 w-3" />
+                  <span className="truncate">{label}</span>
+                </div>
+                <p className="num text-xl font-semibold text-white">{value}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+
+        <div data-calendar-week-grid className="relative mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           {weekDays.map((d, i) => {
             const a = agenda(d);
             const isToday = d === todayIso;
+            const isSelected = d === selected;
             const t = typeForIso(d);
             const dt = new Date(d + "T00:00:00");
+            const eventCount = a.special.length + a.projects.length + a.guiones.length + a.events.length;
+            const previewItems = [
+              ...a.special.map((s) => ({ id: `special-${s.date}`, label: s.label, icon: s.emoji, tone: "special", tag: "Fecha" })),
+              ...a.projects.map(({ project: p, kind }) => ({ id: p.id, label: p.name, icon: kind === "completed" ? "✓" : "•", tone: kind === "completed" ? "done" : "due", tag: kind === "completed" ? "Listo" : "Entrega" })),
+              ...a.guiones.map((g) => ({ id: g.id, label: g.name, icon: "▶", tone: "done", tag: "Guion" })),
+              ...a.events.map((e) => ({ id: e.id, label: e.title, icon: e.status === "done" ? "✓" : "•", tone: e.status === "done" ? "done" : "event", tag: e.status === "done" ? "Listo" : "Tarea" })),
+            ].slice(0, 3);
+
             return (
-              <Reveal key={d} delay={i * 0.04} className="h-full">
+              <Reveal key={d} delay={i * 0.035} className="h-full">
                 <button
+                  data-calendar-day-card={d}
                   onClick={() => setSelected(d)}
+                  aria-pressed={isSelected}
                   {...cursorIntentProps("open", "Ver día")}
-                  className={`card-sheen glass flex h-full min-h-[11rem] w-full flex-col rounded-2xl p-4 text-left transition hover:border-white/20 ${
-                    isToday ? "border-nude/50 shadow-glow-nude" : ""
+                  className={`group relative flex h-full min-h-[13rem] w-full flex-col overflow-hidden rounded-2xl border p-3 text-left transition duration-300 hover:-translate-y-0.5 sm:p-3.5 ${
+                    isSelected
+                      ? "border-nude/80 bg-nude/[0.12] shadow-[0_0_0_1px_rgba(216,170,143,0.18),0_18px_35px_rgba(205,148,115,0.13)]"
+                      : isToday
+                        ? "border-nude/50 bg-nude/[0.07] shadow-glow-nude"
+                        : "border-white/10 bg-white/[0.025] hover:border-white/25 hover:bg-white/[0.05]"
                   }`}
                 >
-                  <div className="mb-3 flex items-start justify-between gap-1">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-                        {dt.toLocaleDateString("es-PY", { weekday: "short" })}
-                      </p>
-                      <p className={`num font-display text-xl font-semibold ${isToday ? "glow-text" : "text-white"}`}>{dt.getDate()}</p>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-60" />
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`num flex h-9 w-9 items-center justify-center rounded-xl text-lg font-semibold ${isToday || isSelected ? "bg-nude text-[#2a1712]" : "bg-white/[0.07] text-white"}`}>
+                        {dt.getDate()}
+                      </span>
+                      <div>
+                        <p className={`text-[10px] font-bold uppercase tracking-[0.16em] ${isToday || isSelected ? "text-nude" : "text-[var(--faint)]"}`}>
+                          {dt.toLocaleDateString("es-PY", { weekday: "short" }).replace(".", "")}
+                        </p>
+                        <p className="text-[10px] text-[var(--faint)]">{dt.toLocaleDateString("es-PY", { month: "short" }).replace(".", "")}</p>
+                      </div>
                     </div>
-                    {t && <span className="text-xs opacity-40" title={t.name}>{t.icon}</span>}
+                    <div className="flex items-center gap-1.5">
+                      {isToday && <span className="glow-pulse h-1.5 w-1.5 rounded-full bg-nude" title="Hoy" />}
+                      {t && <span className="text-sm leading-none opacity-70" title={t.name}>{t.icon}</span>}
+                    </div>
                   </div>
-                  <div className="w-full space-y-1.5">
-                    {a.special.map((s) => (
-                      <p key={s.date} className="flex items-center gap-1.5 rounded-lg border border-nude/20 bg-nude/10 px-2 py-1.5 text-[11px] text-nude">
-                        <span className="shrink-0 leading-none">{s.emoji}</span>
-                        <span className="truncate">{s.label}</span>
-                      </p>
-                    ))}
-                    {a.projects.map(({ project: p, kind }) => (
-                      <p key={p.id} className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] ${kind === "completed" ? "bg-emerald-500/15 text-emerald-200" : "bg-blue-500/15 text-blue-200"}`}>
-                        <span className={`h-1 w-1 shrink-0 rounded-full ${kind === "completed" ? "bg-emerald-400" : "bg-blue-400"}`} />
-                        <span className="truncate">{kind === "completed" ? "✓ " : ""}{p.name}</span>
-                        <StatePill state={kind === "completed" ? "done" : p.status} />
-                        <span className="ml-auto shrink-0"><Avatar username={p.owner} size={16} /></span>
-                      </p>
-                    ))}
-                    {a.guiones.map((g) => (
-                      <p key={g.id} className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-[11px] text-emerald-200">
-                        <span className="h-1 w-1 shrink-0 rounded-full bg-emerald-400" />
-                        <span className="truncate">{g.name}</span>
-                        <span className="ml-auto shrink-0"><Avatar username={g.responsible} size={16} /></span>
-                      </p>
-                    ))}
-                    {a.events.map((e) => (
-                      <p key={e.id} className="flex items-center gap-1.5 rounded-lg bg-nude/15 px-2 py-1.5 text-[11px] text-nude">
-                        <span className="h-1 w-1 shrink-0 rounded-full bg-nude" />
-                        <span className="truncate">{e.title}</span>
-                        <StatePill state={e.status} />
-                        <span className="ml-auto shrink-0"><Avatar username={e.owner} size={16} /></span>
-                      </p>
-                    ))}
-                    {a.special.length + a.projects.length + a.guiones.length + a.events.length === 0 && (
-                      <p className="text-[11px] text-[var(--faint)]">Libre</p>
+
+                  <div className="mt-4 min-h-0 flex-1 space-y-1.5">
+                    {previewItems.length > 0 ? previewItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] ${
+                          item.tone === "done"
+                            ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                            : item.tone === "due"
+                              ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
+                              : item.tone === "special"
+                                ? "border-nude/20 bg-nude/10 text-nude"
+                                : "border-white/10 bg-white/[0.04] text-[var(--muted)]"
+                        }`}
+                      >
+                        <span className="shrink-0 text-[11px] leading-none">{item.icon}</span>
+                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                        <span className="shrink-0 text-[9px] opacity-70">{item.tag}</span>
+                      </div>
+                    )) : (
+                      <div className="flex h-full min-h-16 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-white/[0.015] text-center">
+                        <span className="mb-1 text-base text-white/20">·</span>
+                        <span className="text-[10px] text-[var(--faint)]">Sin agenda</span>
+                      </div>
                     )}
+                    {eventCount > 3 && <p className="px-1 text-[10px] text-[var(--faint)]">+{eventCount - 3} más en el día</p>}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-white/8 pt-2">
+                    <span className={`text-[10px] font-medium ${eventCount ? "text-[var(--muted)]" : "text-[var(--faint)]"}`}>
+                      {eventCount ? `${eventCount} ${eventCount === 1 ? "ítem" : "ítems"}` : "Disponible"}
+                    </span>
+                    <span className="text-[10px] font-semibold text-white/40 transition group-hover:text-nude">Ver agenda →</span>
                   </div>
                 </button>
               </Reveal>

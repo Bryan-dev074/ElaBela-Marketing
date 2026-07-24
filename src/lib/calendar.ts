@@ -3,6 +3,50 @@ import { isProjectSchedulable, projectCalendarOccurrence, type ProjectCalendarOc
 
 export type CalendarProjectEntry = ProjectCalendarOccurrence & { project: Project };
 
+export type CalendarWeekDayAgenda = {
+  special?: readonly unknown[];
+  projects?: readonly { kind?: string }[];
+  guiones?: readonly unknown[];
+  events?: readonly { status?: string }[];
+};
+
+export type CalendarWeekSummary = {
+  daysWithAgenda: number;
+  scheduled: number;
+  active: number;
+  completed: number;
+};
+
+/** Small, presentation-friendly totals for the weekly agenda header. */
+export function calendarWeekSummary(
+  days: readonly string[],
+  agendaByDate: ReadonlyMap<string, CalendarWeekDayAgenda>,
+): CalendarWeekSummary {
+  let daysWithAgenda = 0;
+  let scheduled = 0;
+  let completed = 0;
+  let specialDates = 0;
+
+  for (const date of days) {
+    const agenda = agendaByDate.get(date);
+    if (!agenda) continue;
+    const special = agenda.special?.length ?? 0;
+    const projects = agenda.projects?.length ?? 0;
+    const guiones = agenda.guiones?.length ?? 0;
+    const events = agenda.events?.length ?? 0;
+    const total = special + projects + guiones + events;
+    if (total === 0) continue;
+
+    daysWithAgenda += 1;
+    scheduled += total;
+    specialDates += special;
+    completed += (agenda.projects ?? []).filter(({ kind }) => kind === "completed").length;
+    completed += (agenda.events ?? []).filter(({ status }) => status === "done").length;
+  }
+
+  return { daysWithAgenda, scheduled, active: Math.max(0, scheduled - completed - specialDates), completed };
+}
+
 /** Converts project lifecycle dates into the single calendar occurrence to render. */
 export function calendarProjectEntries(projects: Project[]): CalendarProjectEntry[] {
   return projects.flatMap((project) => {
